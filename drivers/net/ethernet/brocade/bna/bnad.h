@@ -18,8 +18,6 @@
 #include <linux/mutex.h>
 #include <linux/firmware.h>
 #include <linux/if_vlan.h>
-
-#include <asm/checksum.h>
 #include <net/ip6_checksum.h>
 
 #include <net/ip.h>
