@@ -16,7 +16,7 @@
 #define _CHECKSUM_H
 
 #include <linux/errno.h>
-#include <asm/types.h>
+#include <linux/bitops.h>
 #include <asm/byteorder.h>
 #include <asm/checksum.h>
 #if !defined(_HAVE_ARCH_COPY_AND_CSUM_FROM_USER) || !defined(HAVE_CSUM_COPY_USER)
