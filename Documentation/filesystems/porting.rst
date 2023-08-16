@@ -1061,3 +1061,10 @@ export_operations ->encode_fh() no longer has a default implementation to
 encode FILEID_INO32_GEN* file handles.
 Filesystems that used the default implementation may use the generic helper
 generic_encode_ino32_fh() explicitly.
+
+---
+
+**mandatory**
+
+->d_revalidate() gets the expected name passed as an argument now; unlike
+->d_name it is guaranteed to be stable.
