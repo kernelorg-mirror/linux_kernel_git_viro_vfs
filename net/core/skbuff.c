@@ -6965,11 +6965,11 @@ static __always_inline
 size_t copy_from_user_iter_csum(void __user *iter_from, size_t progress,
 				size_t len, void *to, void *priv2)
 {
-	__wsum next, *csum = priv2;
+	__wsum *csum = priv2;
+	__wsum_fault next = csum_and_copy_from_user(iter_from, to + progress, len);
 
-	next = csum_and_copy_from_user(iter_from, to + progress, len);
-	*csum = csum_block_add(*csum, next, progress);
-	return next ? 0 : len;
+	*csum = csum_block_add(*csum, from_wsum_fault(next), progress);
+	return !wsum_is_fault(next) ? 0 : len;
 }
 
 bool csum_and_copy_from_iter_full(void *addr, size_t bytes,

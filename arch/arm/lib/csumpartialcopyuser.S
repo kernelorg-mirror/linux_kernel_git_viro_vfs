@@ -64,7 +64,7 @@
  * unsigned int
  * csum_partial_copy_from_user(const char *src, char *dst, int len)
  *  r0 = src, r1 = dst, r2 = len
- *  Returns : r0 = checksum or 0
+ *  Returns : r0:r1 = checksum:0 on success or -1:-1 on fault
  */
 
 #define FN_ENTRY	ENTRY(csum_partial_copy_from_user)
@@ -73,11 +73,11 @@
 #include "csumpartialcopygeneric.S"
 
 /*
- * We report fault by returning 0 csum - impossible in normal case, since
- * we start with 0xffffffff for initial sum.
+ * We report fault by returning ~0ULL csum
  */
 		.pushsection .text.fixup,"ax"
 		.align	4
-9001:		mov	r0, #0
+9001:		mov	r0, #-1
+		mov	r1, #-1
 		load_regs
 		.popsection

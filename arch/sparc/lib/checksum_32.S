@@ -454,4 +454,4 @@ ccslow:	cmp	%g1, 0
 
 cc_fault:
 	retl
-	 clr	%o0
+	 mov -1, %g1

@@ -739,11 +739,11 @@ static __always_inline
 size_t copy_to_user_iter_csum(void __user *iter_to, size_t progress,
 			      size_t len, void *from, void *priv2)
 {
-	__wsum next, *csum = priv2;
+	__wsum *csum = priv2;
+	__wsum_fault next = csum_and_copy_to_user(from + progress, iter_to, len);
 
-	next = csum_and_copy_to_user(from + progress, iter_to, len);
-	*csum = csum_block_add(*csum, next, progress);
-	return next ? 0 : len;
+	*csum = csum_block_add(*csum, from_wsum_fault(next), progress);
+	return !wsum_is_fault(next) ? 0 : len;
 }
 
 static __always_inline

@@ -15,17 +15,17 @@
  * @dst: destination address
  * @len: number of bytes to be copied.
  *
- * Returns an 32bit unfolded checksum of the buffer.
+ * Returns an 32bit unfolded checksum of the buffer or -1ULL on error
  * src and dst are best aligned to 64bits.
  */
-__wsum
+__wsum_fault
 csum_and_copy_from_user(const void __user *src, void *dst, int len)
 {
-	__wsum sum;
+	__wsum_fault sum;
 
 	might_sleep();
 	if (!user_access_begin(src, len))
-		return 0;
+		return CSUM_FAULT;
 	sum = csum_partial_copy_generic((__force const void *)src, dst, len);
 	user_access_end();
 	return sum;
@@ -37,17 +37,17 @@ csum_and_copy_from_user(const void __user *src, void *dst, int len)
  * @dst: destination address (user space)
  * @len: number of bytes to be copied.
  *
- * Returns an 32bit unfolded checksum of the buffer.
+ * Returns an 32bit unfolded checksum of the buffer or -1ULL on error
  * src and dst are best aligned to 64bits.
  */
-__wsum
+__wsum_fault
 csum_and_copy_to_user(const void *src, void __user *dst, int len)
 {
-	__wsum sum;
+	__wsum_fault sum;
 
 	might_sleep();
 	if (!user_access_begin(dst, len))
-		return 0;
+		return CSUM_FAULT;
 	sum = csum_partial_copy_generic(src, (void __force *)dst, len);
 	user_access_end();
 	return sum;
@@ -64,7 +64,7 @@ csum_and_copy_to_user(const void *src, void __user *dst, int len)
 __wsum
 csum_partial_copy_nocheck(const void *src, void *dst, int len)
 {
-	return csum_partial_copy_generic(src, dst, len);
+	return from_wsum_fault(csum_partial_copy_generic(src, dst, len));
 }
 EXPORT_SYMBOL(csum_partial_copy_nocheck);
 
