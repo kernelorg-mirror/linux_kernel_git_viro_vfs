@@ -34,6 +34,7 @@
 
 #ifndef FUNC_NAME
 #define FUNC_NAME	csum_partial_copy_nocheck
+EXPORT_SYMBOL(csum_partial_copy_nocheck)
 #endif
 
 	.register	%g2, #scratch
@@ -67,7 +68,6 @@
 
 	.globl		FUNC_NAME
 	.type		FUNC_NAME,#function
-	EXPORT_SYMBOL(FUNC_NAME)
 FUNC_NAME:		/* %o0=src, %o1=dst, %o2=len */
 	LOAD(prefetch, %o0 + 0x000, #n_reads)
 	xor		%o0, %o1, %g1
