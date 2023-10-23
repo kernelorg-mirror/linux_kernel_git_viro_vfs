@@ -71,7 +71,7 @@ EXPORT_SYMBOL(csum_partial_copy_nocheck)
 FUNC_NAME:		/* %o0=src, %o1=dst, %o2=len */
 	LOAD(prefetch, %o0 + 0x000, #n_reads)
 	xor		%o0, %o1, %g1
-	mov		-1, %o3
+	clr		%o3
 	clr		%o4
 	andcc		%g1, 0x3, %g0
 	bne,pn		%icc, 95f
