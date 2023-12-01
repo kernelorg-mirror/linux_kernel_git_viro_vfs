@@ -575,7 +575,7 @@ static inline void dentry_unlist(struct dentry *dentry)
 	}
 }
 
-static void __dentry_kill(struct dentry *dentry)
+static struct dentry *__dentry_kill(struct dentry *dentry)
 {
 	struct dentry *parent = NULL;
 	bool can_free = true;
@@ -623,10 +623,9 @@ static void __dentry_kill(struct dentry *dentry)
 		can_free = false;
 	}
 	spin_unlock(&dentry->d_lock);
-	if (parent)
-		spin_unlock(&parent->d_lock);
 	if (likely(can_free))
 		dentry_free(dentry);
+	return parent;
 }
 
 static struct dentry *__lock_parent(struct dentry *dentry)
@@ -887,12 +886,11 @@ void dput(struct dentry *dentry)
 
 		/* Slow case: now with the dentry lock held */
 		if (likely(lock_for_kill(dentry))) {
-			struct dentry *parent = dentry->d_parent;
 			rcu_read_unlock();
-			__dentry_kill(dentry);
-			if (dentry == parent)
+			dentry = __dentry_kill(dentry);
+			if (!dentry)
 				return;
-			dentry = parent;
+			spin_unlock(&dentry->d_lock);
 		} else {
 			rcu_read_unlock();
 			spin_unlock(&dentry->d_lock);
@@ -1103,7 +1101,9 @@ static inline void shrink_kill(struct dentry *victim, struct list_head *list)
 	struct dentry *parent = victim->d_parent;
 	if (parent != victim && !--parent->d_lockref.count)
 		to_shrink_list(parent, list);
-	__dentry_kill(victim);
+	parent = __dentry_kill(victim);
+	if (parent)
+		spin_unlock(&parent->d_lock);
 }
 
 void shrink_dentry_list(struct list_head *list)
