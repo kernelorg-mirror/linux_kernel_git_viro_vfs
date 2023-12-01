@@ -843,7 +843,6 @@ void dput(struct dentry *dentry)
 		if (!dentry)
 			return;
 		spin_unlock(&dentry->d_lock);
-		might_sleep();
 		rcu_read_lock();
 		if (likely(fast_dput(dentry))) {
 			rcu_read_unlock();
