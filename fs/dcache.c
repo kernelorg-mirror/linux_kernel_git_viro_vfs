@@ -611,6 +611,7 @@ static void __dentry_kill(struct dentry *dentry)
 	if (dentry->d_op && dentry->d_op->d_release)
 		dentry->d_op->d_release(dentry);
 
+	cond_resched();
 	spin_lock(&dentry->d_lock);
 	if (dentry->d_flags & DCACHE_SHRINK_LIST) {
 		dentry->d_flags |= DCACHE_MAY_FREE;
@@ -619,7 +620,6 @@ static void __dentry_kill(struct dentry *dentry)
 	spin_unlock(&dentry->d_lock);
 	if (likely(can_free))
 		dentry_free(dentry);
-	cond_resched();
 }
 
 static struct dentry *__lock_parent(struct dentry *dentry)
