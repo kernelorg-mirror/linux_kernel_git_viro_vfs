@@ -579,8 +579,6 @@ static struct dentry *__dentry_kill(struct dentry *dentry)
 {
 	struct dentry *parent = NULL;
 	bool can_free = true;
-	if (!IS_ROOT(dentry))
-		parent = dentry->d_parent;
 
 	/*
 	 * The dentry is now unrecoverably dead to the world.
@@ -600,8 +598,6 @@ static struct dentry *__dentry_kill(struct dentry *dentry)
 	}
 	/* if it was on the hash then remove it */
 	__d_drop(dentry);
-	if (parent)
-		spin_unlock(&parent->d_lock);
 	if (dentry->d_inode)
 		dentry_unlink_inode(dentry);
 	else
@@ -611,7 +607,6 @@ static struct dentry *__dentry_kill(struct dentry *dentry)
 		dentry->d_op->d_release(dentry);
 
 	cond_resched();
-	parent = NULL;
 	if (!IS_ROOT(dentry)) {
 		parent = dentry->d_parent;
 		spin_lock(&parent->d_lock);
@@ -628,31 +623,6 @@ static struct dentry *__dentry_kill(struct dentry *dentry)
 	return parent;
 }
 
-static struct dentry *__lock_parent(struct dentry *dentry)
-{
-	struct dentry *parent;
-again:
-	parent = READ_ONCE(dentry->d_parent);
-	spin_lock(&parent->d_lock);
-	/*
-	 * We can't blindly lock dentry until we are sure
-	 * that we won't violate the locking order.
-	 * Any changes of dentry->d_parent must have
-	 * been done with parent->d_lock held, so
-	 * spin_lock() above is enough of a barrier
-	 * for checking if it's still our child.
-	 */
-	if (unlikely(parent != dentry->d_parent)) {
-		spin_unlock(&parent->d_lock);
-		goto again;
-	}
-	if (parent != dentry)
-		spin_lock_nested(&dentry->d_lock, DENTRY_D_LOCK_NESTED);
-	else
-		parent = NULL;
-	return parent;
-}
-
 /*
  * Lock a dentry for feeding it to __dentry_kill().
  * Called under rcu_read_lock() and dentry->d_lock; the former
@@ -661,48 +631,38 @@ again:
  * d_delete(), etc.
  *
  * Return false if dentry is busy.  Otherwise, return true and have
- * that dentry's inode and parent both locked.
+ * that dentry's inode locked.
  */
 
 static bool lock_for_kill(struct dentry *dentry)
 {
 	struct inode *inode = dentry->d_inode;
-	struct dentry *parent = dentry->d_parent;
 
 	if (unlikely(dentry->d_lockref.count))
 		return false;
 
 	if (inode && unlikely(!spin_trylock(&inode->i_lock)))
 		goto slow;
-	if (dentry == parent)
-		return true;
-	if (likely(spin_trylock(&parent->d_lock)))
-		return true;
+	return true;
 
-	if (inode)
-		spin_unlock(&inode->i_lock);
 slow:
 	spin_unlock(&dentry->d_lock);
 
 	for (;;) {
 		if (inode)
 			spin_lock(&inode->i_lock);
-		parent = __lock_parent(dentry);
+		spin_lock(&dentry->d_lock);
 		if (likely(inode == dentry->d_inode))
 			break;
 		if (inode)
 			spin_unlock(&inode->i_lock);
 		inode = dentry->d_inode;
 		spin_unlock(&dentry->d_lock);
-		if (parent)
-			spin_unlock(&parent->d_lock);
 	}
 	if (likely(!dentry->d_lockref.count))
 		return true;
 	if (inode)
 		spin_unlock(&inode->i_lock);
-	if (parent)
-		spin_unlock(&parent->d_lock);
 	return false;
 }
 
