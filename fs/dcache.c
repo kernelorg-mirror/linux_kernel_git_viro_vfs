@@ -600,7 +600,6 @@ static void __dentry_kill(struct dentry *dentry)
 	}
 	/* if it was on the hash then remove it */
 	__d_drop(dentry);
-	dentry_unlist(dentry);
 	if (parent)
 		spin_unlock(&parent->d_lock);
 	if (dentry->d_inode)
@@ -612,12 +611,20 @@ static void __dentry_kill(struct dentry *dentry)
 		dentry->d_op->d_release(dentry);
 
 	cond_resched();
-	spin_lock(&dentry->d_lock);
+	parent = NULL;
+	if (!IS_ROOT(dentry)) {
+		parent = dentry->d_parent;
+		spin_lock(&parent->d_lock);
+	}
+	spin_lock_nested(&dentry->d_lock, DENTRY_D_LOCK_NESTED);
+	dentry_unlist(dentry);
 	if (dentry->d_flags & DCACHE_SHRINK_LIST) {
 		dentry->d_flags |= DCACHE_MAY_FREE;
 		can_free = false;
 	}
 	spin_unlock(&dentry->d_lock);
+	if (parent)
+		spin_unlock(&parent->d_lock);
 	if (likely(can_free))
 		dentry_free(dentry);
 }
@@ -1477,6 +1484,8 @@ static enum d_walk_ret select_collect(void *_data, struct dentry *dentry)
 		data->found++;
 	} else if (!dentry->d_lockref.count) {
 		to_shrink_list(dentry, &data->dispose);
+		data->found++;
+	} else if (dentry->d_lockref.count < 0) {
 		data->found++;
 	}
 	/*
