@@ -1098,12 +1098,12 @@ EXPORT_SYMBOL(d_prune_aliases);
 
 static inline void shrink_kill(struct dentry *victim, struct list_head *list)
 {
-	struct dentry *parent = victim->d_parent;
-	if (parent != victim && !--parent->d_lockref.count)
+	struct dentry *parent = __dentry_kill(victim);
+	if (!parent)
+		return;
+	if (!--parent->d_lockref.count)
 		to_shrink_list(parent, list);
-	parent = __dentry_kill(victim);
-	if (parent)
-		spin_unlock(&parent->d_lock);
+	spin_unlock(&parent->d_lock);
 }
 
 void shrink_dentry_list(struct list_head *list)
