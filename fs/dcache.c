@@ -829,28 +829,29 @@ locked:
  */
 void dput(struct dentry *dentry)
 {
-	while (dentry) {
+	if (!dentry)
+		return;
+	might_sleep();
+	rcu_read_lock();
+	if (likely(fast_dput(dentry))) {
+		rcu_read_unlock();
+		return;
+	}
+	while (likely(lock_for_kill(dentry))) {
+		rcu_read_unlock();
+		dentry = __dentry_kill(dentry);
+		if (!dentry)
+			return;
+		spin_unlock(&dentry->d_lock);
 		might_sleep();
-
 		rcu_read_lock();
 		if (likely(fast_dput(dentry))) {
 			rcu_read_unlock();
 			return;
 		}
-
-		/* Slow case: now with the dentry lock held */
-		if (likely(lock_for_kill(dentry))) {
-			rcu_read_unlock();
-			dentry = __dentry_kill(dentry);
-			if (!dentry)
-				return;
-			spin_unlock(&dentry->d_lock);
-		} else {
-			rcu_read_unlock();
-			spin_unlock(&dentry->d_lock);
-			return;
-		}
 	}
+	rcu_read_unlock();
+	spin_unlock(&dentry->d_lock);
 }
 EXPORT_SYMBOL(dput);
 
