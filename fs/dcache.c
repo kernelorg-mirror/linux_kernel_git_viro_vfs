@@ -842,12 +842,15 @@ void dput(struct dentry *dentry)
 		dentry = __dentry_kill(dentry);
 		if (!dentry)
 			return;
-		spin_unlock(&dentry->d_lock);
-		rcu_read_lock();
-		if (likely(fast_dput(dentry))) {
-			rcu_read_unlock();
+		if (--dentry->d_lockref.count) {
+			spin_unlock(&dentry->d_lock);
 			return;
 		}
+		if (retain_dentry(dentry)) {
+			spin_unlock(&dentry->d_lock);
+			return;
+		}
+		rcu_read_lock();
 	}
 	rcu_read_unlock();
 	spin_unlock(&dentry->d_lock);
