@@ -620,6 +620,10 @@ static struct dentry *__dentry_kill(struct dentry *dentry)
 	spin_unlock(&dentry->d_lock);
 	if (likely(can_free))
 		dentry_free(dentry);
+	if (parent && --parent->d_lockref.count) {
+		spin_unlock(&parent->d_lock);
+		return NULL;
+	}
 	return parent;
 }
 
@@ -842,10 +846,6 @@ void dput(struct dentry *dentry)
 		dentry = __dentry_kill(dentry);
 		if (!dentry)
 			return;
-		if (--dentry->d_lockref.count) {
-			spin_unlock(&dentry->d_lock);
-			return;
-		}
 		if (retain_dentry(dentry)) {
 			spin_unlock(&dentry->d_lock);
 			return;
@@ -1056,11 +1056,10 @@ EXPORT_SYMBOL(d_prune_aliases);
 static inline void shrink_kill(struct dentry *victim, struct list_head *list)
 {
 	struct dentry *parent = __dentry_kill(victim);
-	if (!parent)
-		return;
-	if (!--parent->d_lockref.count)
+	if (parent) {
 		to_shrink_list(parent, list);
-	spin_unlock(&parent->d_lock);
+		spin_unlock(&parent->d_lock);
+	}
 }
 
 void shrink_dentry_list(struct list_head *list)
