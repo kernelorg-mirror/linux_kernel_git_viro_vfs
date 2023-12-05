@@ -57,7 +57,7 @@ obj-y += iomem.o
 ifeq ($(CONFIG_X86_32),y)
         obj-y += atomic64_32.o
         lib-y += atomic64_cx8_32.o
-        lib-y += checksum_32.o
+        lib-y += csum-partial_32.o csum-copy_32.o
         lib-y += strstr_32.o
         lib-y += string_32.o
         lib-y += memmove_32.o
