@@ -641,24 +641,18 @@ static bool lock_for_kill(struct dentry *dentry)
 	if (unlikely(dentry->d_lockref.count))
 		return false;
 
-	if (inode && unlikely(!spin_trylock(&inode->i_lock)))
-		goto slow;
-	return true;
+	if (!inode || likely(spin_trylock(&inode->i_lock)))
+		return true;
 
-slow:
-	spin_unlock(&dentry->d_lock);
-
-	for (;;) {
-		if (inode)
-			spin_lock(&inode->i_lock);
+	do {
+		spin_unlock(&dentry->d_lock);
+		spin_lock(&inode->i_lock);
 		spin_lock(&dentry->d_lock);
 		if (likely(inode == dentry->d_inode))
 			break;
-		if (inode)
-			spin_unlock(&inode->i_lock);
+		spin_unlock(&inode->i_lock);
 		inode = dentry->d_inode;
-		spin_unlock(&dentry->d_lock);
-	}
+	} while (inode);
 	if (likely(!dentry->d_lockref.count))
 		return true;
 	if (inode)
