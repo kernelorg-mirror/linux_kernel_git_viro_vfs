@@ -22,7 +22,7 @@
 #include <linux/compat.h>
 #include <linux/uaccess.h>
 
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 /*
  * Some filesystems were never converted to '->iterate_shared()'
