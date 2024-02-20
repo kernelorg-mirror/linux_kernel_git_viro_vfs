@@ -593,32 +593,6 @@ static int __rpc_mkpipe_dentry(struct inode *dir, struct dentry *dentry,
 	return 0;
 }
 
-static int __rpc_rmdir(struct inode *dir, struct dentry *dentry)
-{
-	int ret;
-
-	dget(dentry);
-	ret = simple_rmdir(dir, dentry);
-	d_drop(dentry);
-	if (!ret)
-		fsnotify_rmdir(dir, dentry);
-	dput(dentry);
-	return ret;
-}
-
-static int __rpc_unlink(struct inode *dir, struct dentry *dentry)
-{
-	int ret;
-
-	dget(dentry);
-	ret = simple_unlink(dir, dentry);
-	d_drop(dentry);
-	if (!ret)
-		fsnotify_unlink(dir, dentry);
-	dput(dentry);
-	return ret;
-}
-
 static struct dentry *__rpc_lookup_create_exclusive(struct dentry *parent,
 					  const char *name)
 {
@@ -633,41 +607,6 @@ static struct dentry *__rpc_lookup_create_exclusive(struct dentry *parent,
 		return dentry;
 	dput(dentry);
 	return ERR_PTR(-EEXIST);
-}
-
-/*
- * FIXME: This probably has races.
- */
-static void __rpc_depopulate(struct dentry *parent,
-			     const struct rpc_filelist *files,
-			     int start, int eof)
-{
-	struct inode *dir = d_inode(parent);
-	struct dentry *dentry;
-	struct qstr name;
-	int i;
-
-	for (i = start; i < eof; i++) {
-		name.name = files[i].name;
-		name.len = strlen(files[i].name);
-		dentry = d_hash_and_lookup(parent, &name);
-
-		if (dentry == NULL)
-			continue;
-		if (d_really_is_negative(dentry))
-			goto next;
-		switch (d_inode(dentry)->i_mode & S_IFMT) {
-			default:
-				BUG();
-			case S_IFREG:
-				__rpc_unlink(dir, dentry);
-				break;
-			case S_IFDIR:
-				__rpc_rmdir(dir, dentry);
-		}
-next:
-		dput(dentry);
-	}
 }
 
 static int rpc_populate(struct dentry *parent,
@@ -706,7 +645,6 @@ static int rpc_populate(struct dentry *parent,
 	inode_unlock(dir);
 	return 0;
 out_bad:
-	__rpc_depopulate(parent, files, start, eof);
 	inode_unlock(dir);
 	printk(KERN_WARNING "%s: %s failed to populate directory %pd\n",
 			__FILE__, __func__, parent);
@@ -730,14 +668,15 @@ static struct dentry *rpc_mkdir_populate(struct dentry *parent,
 		goto out_err;
 	if (populate != NULL) {
 		error = populate(dentry, args_populate);
-		if (error)
-			goto err_rmdir;
+		if (error) {
+			locked_recursive_removal(dentry, NULL);
+			inode_unlock(dir);
+			return ERR_PTR(error);
+		}
 	}
 out:
 	inode_unlock(dir);
 	return dentry;
-err_rmdir:
-	__rpc_rmdir(dir, dentry);
 out_err:
 	dentry = ERR_PTR(error);
 	goto out;
