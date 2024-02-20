@@ -701,7 +701,7 @@ out_err:
  * The @private argument passed here will be available to all these methods
  * from the file pointer, via RPC_I(file_inode(file))->private.
  */
-struct dentry *rpc_mkpipe_dentry(struct dentry *parent, const char *name,
+int rpc_mkpipe_dentry(struct dentry *parent, const char *name,
 				 void *private, struct rpc_pipe *pipe)
 {
 	struct dentry *dentry;
@@ -716,21 +716,19 @@ struct dentry *rpc_mkpipe_dentry(struct dentry *parent, const char *name,
 
 	inode_lock_nested(dir, I_MUTEX_PARENT);
 	dentry = __rpc_lookup_create_exclusive(parent, name);
-	if (IS_ERR(dentry))
-		goto out;
+	if (IS_ERR(dentry)) {
+		inode_unlock(dir);
+		return PTR_ERR(dentry);
+	}
 	err = __rpc_mkpipe_dentry(dir, dentry, umode, &rpc_pipe_fops,
 				  private, pipe);
-	if (err)
-		goto out_err;
-out:
+	if (unlikely(err))
+		pr_warn("%s() failed to create pipe %pd/%s (errno = %d)\n",
+			__func__, parent, name, err);
+	else
+		pipe->dentry = dentry;
 	inode_unlock(dir);
-	return dentry;
-out_err:
-	dentry = ERR_PTR(err);
-	printk(KERN_WARNING "%s: %s() failed to create pipe %pd/%s (errno = %d)\n",
-			__FILE__, __func__, parent, name,
-			err);
-	goto out;
+	return err;
 }
 EXPORT_SYMBOL_GPL(rpc_mkpipe_dentry);
 
@@ -1185,7 +1183,6 @@ rpc_gssd_dummy_populate(struct dentry *root, struct rpc_pipe *pipe_data)
 	int ret = 0;
 	struct dentry *gssd_dentry;
 	struct dentry *clnt_dentry = NULL;
-	struct dentry *pipe_dentry = NULL;
 	struct qstr q = QSTR_INIT(files[RPCAUTH_gssd].name,
 				  strlen(files[RPCAUTH_gssd].name));
 
@@ -1212,10 +1209,8 @@ rpc_gssd_dummy_populate(struct dentry *root, struct rpc_pipe *pipe_data)
 		dput(clnt_dentry);
 		return ret;
 	}
-	pipe_dentry = rpc_mkpipe_dentry(clnt_dentry, "gssd", NULL, pipe_data);
+	ret = rpc_mkpipe_dentry(clnt_dentry, "gssd", NULL, pipe_data);
 	dput(clnt_dentry);
-	if (IS_ERR(pipe_dentry))
-		ret = PTR_ERR(pipe_dentry);
 	return ret;
 }
 
