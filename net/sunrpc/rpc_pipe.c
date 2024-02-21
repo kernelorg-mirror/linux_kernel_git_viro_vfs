@@ -612,27 +612,6 @@ static int rpc_populate(struct dentry *parent,
 	return err;
 }
 
-static struct dentry *rpc_mkdir_populate(struct dentry *parent,
-		const char *name, umode_t mode, void *private,
-		int (*populate)(struct dentry *, void *), void *args_populate)
-{
-	struct dentry *dentry;
-	struct inode *dir = d_inode(parent);
-
-	inode_lock_nested(dir, I_MUTEX_PARENT);
-	dentry = rpc_new_dir(parent, name, mode, private);
-	if (!IS_ERR(dentry) && (populate != NULL)) {
-		int error = populate(dentry, args_populate);
-		if (error) {
-			locked_recursive_removal(dentry, NULL);
-			inode_unlock(dir);
-			return ERR_PTR(error);
-		}
-	}
-	inode_unlock(dir);
-	return dentry;
-}
-
 /**
  * rpc_mkpipe_dentry - make an rpc_pipefs file for kernel<->userspace
  *		       communication
@@ -869,13 +848,6 @@ static const struct rpc_filelist authfiles[] = {
 	},
 };
 
-static int rpc_clntdir_populate(struct dentry *dentry, void *private)
-{
-	return rpc_populate(dentry,
-			    authfiles, RPCAUTH_info, RPCAUTH_EOF,
-			    private);
-}
-
 /**
  * rpc_create_client_dir - Create a new rpc_client directory in rpc_pipefs
  * @dentry: the parent of new directory
@@ -891,14 +863,26 @@ struct dentry *rpc_create_client_dir(struct dentry *dentry,
 				   const char *name,
 				   struct rpc_clnt *rpc_client)
 {
+	struct inode *dir = d_inode(dentry);
 	struct dentry *ret;
+	int error;
 
-	ret = rpc_mkdir_populate(dentry, name, 0555, NULL,
-				 rpc_clntdir_populate, rpc_client);
-	if (!IS_ERR(ret)) {
-		rpc_client->cl_pipedir_objects.pdh_dentry = ret;
-		rpc_create_pipe_dir_objects(&rpc_client->cl_pipedir_objects);
+	inode_lock_nested(dir, I_MUTEX_PARENT);
+	ret = rpc_new_dir(dentry, name, 0555, NULL);
+	if (IS_ERR(ret)) {
+		inode_unlock(dir);
+		return ret;
 	}
+	error = rpc_populate(ret, authfiles, RPCAUTH_info, RPCAUTH_EOF,
+		    rpc_client);
+	if (unlikely(error)) {
+		locked_recursive_removal(ret, NULL);
+		inode_unlock(dir);
+		return ERR_PTR(error);
+	}
+	inode_unlock(dir);
+	rpc_client->cl_pipedir_objects.pdh_dentry = ret;
+	rpc_create_pipe_dir_objects(&rpc_client->cl_pipedir_objects);
 	return ret;
 }
 
@@ -936,18 +920,24 @@ static const struct rpc_filelist cache_pipefs_files[3] = {
 	},
 };
 
-static int rpc_cachedir_populate(struct dentry *dentry, void *private)
-{
-	return rpc_populate(dentry,
-			    cache_pipefs_files, 0, 3,
-			    private);
-}
-
 struct dentry *rpc_create_cache_dir(struct dentry *parent, const char *name,
 				    umode_t umode, struct cache_detail *cd)
 {
-	return rpc_mkdir_populate(parent, name, umode, NULL,
-			rpc_cachedir_populate, cd);
+	struct dentry *dentry;
+	struct inode *dir = d_inode(parent);
+
+	inode_lock_nested(dir, I_MUTEX_PARENT);
+	dentry = rpc_new_dir(parent, name, umode, NULL);
+	if (!IS_ERR(dentry)) {
+		int error = rpc_populate(dentry, cache_pipefs_files, 0, 3, cd);
+		if (error) {
+			locked_recursive_removal(dentry, NULL);
+			inode_unlock(dir);
+			return ERR_PTR(error);
+		}
+	}
+	inode_unlock(dir);
+	return dentry;
 }
 
 void rpc_remove_cache_dir(struct dentry *dentry)
