@@ -598,25 +598,6 @@ struct rpc_pipe *rpc_mkpipe_data(const struct rpc_pipe_ops *ops, int flags)
 }
 EXPORT_SYMBOL_GPL(rpc_mkpipe_data);
 
-static int __rpc_mkpipe_dentry(struct inode *dir, struct dentry *dentry,
-			       umode_t mode,
-			       const struct file_operations *i_fop,
-			       void *private,
-			       struct rpc_pipe *pipe)
-{
-	struct rpc_inode *rpci;
-	int err;
-
-	err = __rpc_create_common(dir, dentry, S_IFIFO | mode, i_fop, private);
-	if (err)
-		return err;
-	rpci = RPC_I(d_inode(dentry));
-	rpci->private = private;
-	rpci->pipe = pipe;
-	fsnotify_create(dir, dentry);
-	return 0;
-}
-
 static int rpc_populate(struct dentry *parent,
 			const struct rpc_filelist *files,
 			int start, int eof,
@@ -702,6 +683,7 @@ int rpc_mkpipe_dentry(struct dentry *parent, const char *name,
 	struct dentry *dentry;
 	struct inode *dir = d_inode(parent);
 	umode_t umode = S_IFIFO | 0600;
+	struct rpc_inode *rpci;
 	int err;
 
 	if (pipe->ops->upcall == NULL)
@@ -715,15 +697,20 @@ int rpc_mkpipe_dentry(struct dentry *parent, const char *name,
 		inode_unlock(dir);
 		return PTR_ERR(dentry);
 	}
-	err = __rpc_mkpipe_dentry(dir, dentry, umode, &rpc_pipe_fops,
-				  private, pipe);
-	if (unlikely(err))
+	err = __rpc_create_common(dir, dentry, umode, &rpc_pipe_fops, private);
+	if (unlikely(err)) {
 		pr_warn("%s() failed to create pipe %pd/%s (errno = %d)\n",
 			__func__, parent, name, err);
-	else
-		pipe->dentry = dentry;
+		inode_unlock(dir);
+		return err;
+	}
+	rpci = RPC_I(d_inode(dentry));
+	rpci->private = private;
+	rpci->pipe = pipe;
+	fsnotify_create(dir, dentry);
+	pipe->dentry = dentry;
 	inode_unlock(dir);
-	return err;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(rpc_mkpipe_dentry);
 
