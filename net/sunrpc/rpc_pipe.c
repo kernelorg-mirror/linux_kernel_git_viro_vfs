@@ -524,11 +524,11 @@ static struct dentry *rpc_new_file(struct dentry *parent, const char *name,
 }
 
 static struct dentry *rpc_new_dir(struct dentry *parent, const char *name,
-				umode_t mode, void *private)
+				umode_t mode)
 {
 	struct dentry *dentry;
 
-	dentry = rpc_create_common(parent, name, S_IFDIR | mode, NULL, private);
+	dentry = rpc_create_common(parent, name, S_IFDIR | mode, NULL, NULL);
 	if (!IS_ERR(dentry)) {
 		struct inode *dir = parent->d_inode;
 		inc_nlink(dir);
@@ -597,8 +597,7 @@ static int rpc_populate(struct dentry *parent,
 			case S_IFDIR:
 				dentry = rpc_new_dir(parent,
 						files[i].name,
-						files[i].mode,
-						private);
+						files[i].mode);
 		}
 		if (IS_ERR(dentry)) {
 			err = PTR_ERR(dentry);
@@ -868,7 +867,7 @@ struct dentry *rpc_create_client_dir(struct dentry *dentry,
 	int error;
 
 	inode_lock_nested(dir, I_MUTEX_PARENT);
-	ret = rpc_new_dir(dentry, name, 0555, NULL);
+	ret = rpc_new_dir(dentry, name, 0555);
 	if (IS_ERR(ret)) {
 		inode_unlock(dir);
 		return ret;
@@ -927,7 +926,7 @@ struct dentry *rpc_create_cache_dir(struct dentry *parent, const char *name,
 	struct inode *dir = d_inode(parent);
 
 	inode_lock_nested(dir, I_MUTEX_PARENT);
-	dentry = rpc_new_dir(parent, name, umode, NULL);
+	dentry = rpc_new_dir(parent, name, umode);
 	if (!IS_ERR(dentry)) {
 		int error = rpc_populate(dentry, cache_pipefs_files, 0, 3, cd);
 		if (error) {
@@ -1117,7 +1116,7 @@ rpc_gssd_dummy_populate(struct dentry *root, struct rpc_pipe *pipe_data)
 	if (!gssd_dentry)
 		return -ENOENT;
 
-	clnt_dentry = rpc_new_dir(gssd_dentry, "clntXX", 0555, NULL);
+	clnt_dentry = rpc_new_dir(gssd_dentry, "clntXX", 0555);
 	dput(gssd_dentry);
 
 	if (IS_ERR(clnt_dentry))
