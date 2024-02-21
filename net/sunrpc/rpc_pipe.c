@@ -1079,13 +1079,6 @@ void rpc_put_sb_net(const struct net *net)
 }
 EXPORT_SYMBOL_GPL(rpc_put_sb_net);
 
-static const struct rpc_filelist gssd_dummy_clnt_dir[] = {
-	[0] = {
-		.name = "clntXX",
-		.mode = S_IFDIR | 0555,
-	},
-};
-
 static ssize_t
 dummy_downcall(struct file *filp, const char __user *src, size_t len)
 {
@@ -1114,14 +1107,6 @@ rpc_dummy_info_show(struct seq_file *m, void *v)
 }
 DEFINE_SHOW_ATTRIBUTE(rpc_dummy_info);
 
-static const struct rpc_filelist gssd_dummy_info_file[] = {
-	[0] = {
-		.name = "info",
-		.i_fop = &rpc_dummy_info_fops,
-		.mode = S_IFREG | 0400,
-	},
-};
-
 /**
  * rpc_gssd_dummy_populate - create a dummy gssd pipe
  * @root:	root of the rpc_pipefs filesystem
@@ -1133,9 +1118,7 @@ static const struct rpc_filelist gssd_dummy_info_file[] = {
 static int
 rpc_gssd_dummy_populate(struct dentry *root, struct rpc_pipe *pipe_data)
 {
-	int ret = 0;
-	struct dentry *gssd_dentry;
-	struct dentry *clnt_dentry = NULL;
+	struct dentry *gssd_dentry, *clnt_dentry, *info_dentry;
 	struct qstr q = QSTR_INIT(files[RPCAUTH_gssd].name,
 				  strlen(files[RPCAUTH_gssd].name));
 
@@ -1144,27 +1127,18 @@ rpc_gssd_dummy_populate(struct dentry *root, struct rpc_pipe *pipe_data)
 	if (!gssd_dentry)
 		return -ENOENT;
 
-	ret = rpc_populate(gssd_dentry, gssd_dummy_clnt_dir, 0, 1, NULL);
-	if (ret) {
-		dput(gssd_dentry);
-		return ret;
-	}
-
-	q.name = gssd_dummy_clnt_dir[0].name;
-	q.len = strlen(gssd_dummy_clnt_dir[0].name);
-	clnt_dentry = d_hash_and_lookup(gssd_dentry, &q);
+	clnt_dentry = rpc_new_dir(gssd_dentry, "clntXX", 0555, NULL);
 	dput(gssd_dentry);
-	if (!clnt_dentry)
+
+	if (IS_ERR(clnt_dentry))
 		return -ENOENT;
 
-	ret = rpc_populate(clnt_dentry, gssd_dummy_info_file, 0, 1, NULL);
-	if (ret) {
-		dput(clnt_dentry);
-		return ret;
-	}
-	ret = rpc_mkpipe_dentry(clnt_dentry, "gssd", NULL, pipe_data);
-	dput(clnt_dentry);
-	return ret;
+	info_dentry = rpc_new_file(clnt_dentry, "info", 0400,
+				   &rpc_dummy_info_fops, NULL);
+	if (IS_ERR(info_dentry))
+		return PTR_ERR(info_dentry);
+
+	return rpc_mkpipe_dentry(clnt_dentry, "gssd", NULL, pipe_data);
 }
 
 static int
