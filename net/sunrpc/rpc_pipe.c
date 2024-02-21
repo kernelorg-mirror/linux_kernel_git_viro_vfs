@@ -484,45 +484,30 @@ rpc_get_inode(struct super_block *sb, umode_t mode)
 	return inode;
 }
 
-static struct dentry *__rpc_lookup_create_exclusive(struct dentry *parent,
-					  const char *name)
+static struct dentry *rpc_create_common(struct dentry *parent, const char *name,
+				        umode_t mode,
+				        const struct file_operations *i_fop,
+				        void *private)
 {
-	struct qstr q = QSTR_INIT(name, strlen(name));
-	struct dentry *dentry = d_hash_and_lookup(parent, &q);
-	if (!dentry) {
-		dentry = d_alloc(parent, &q);
-		if (!dentry)
-			return ERR_PTR(-ENOMEM);
-	}
-	if (d_really_is_negative(dentry))
-		return dentry;
-	dput(dentry);
-	return ERR_PTR(-EEXIST);
-}
-
-static int __rpc_create_common(struct inode *dir, struct dentry *dentry,
-			       umode_t mode,
-			       const struct file_operations *i_fop,
-			       void *private)
-{
+	struct dentry *dentry = start_creating_persistent(parent, name);
 	struct inode *inode;
 
-	d_drop(dentry);
-	inode = rpc_get_inode(dir->i_sb, mode);
-	if (!inode)
-		goto out_err;
-	inode->i_ino = iunique(dir->i_sb, 100);
+	if (IS_ERR(dentry))
+		return dentry;
+	inode = rpc_get_inode(parent->d_sb, mode);
+	if (unlikely(!inode)) {
+		pr_warn("%s failed to allocate inode for dentry %pd\n",
+			__func__, dentry);
+		d_make_discardable(dentry);
+		return ERR_PTR(-ENOMEM);
+	}
+	inode->i_ino = iunique(parent->d_sb, 100);
 	if (i_fop)
 		inode->i_fop = i_fop;
 	if (private)
 		rpc_inode_setowner(inode, private);
-	d_add(dentry, inode);
-	return 0;
-out_err:
-	printk(KERN_WARNING "%s: %s failed to allocate inode for dentry %pd\n",
-			__FILE__, __func__, dentry);
-	dput(dentry);
-	return -ENOMEM;
+	d_instantiate(dentry, inode);
+	return dentry;
 }
 
 static struct dentry *rpc_new_file(struct dentry *parent, const char *name,
@@ -530,35 +515,25 @@ static struct dentry *rpc_new_file(struct dentry *parent, const char *name,
 				 const struct file_operations *i_fop,
 				 void *private)
 {
-	struct inode *dir = parent->d_inode;
-	struct dentry *dentry = __rpc_lookup_create_exclusive(parent, name);
-	int err;
+	struct dentry *dentry;
 
-	if (IS_ERR(dentry))
-		return dentry;
-
-	err = __rpc_create_common(dir, dentry, S_IFREG | mode, i_fop, private);
-	if (err)
-		return ERR_PTR(err);
-	fsnotify_create(dir, dentry);
+	dentry = rpc_create_common(parent, name, S_IFREG | mode, i_fop, private);
+	if (!IS_ERR(dentry))
+		fsnotify_create(parent->d_inode, dentry);
 	return dentry;
 }
 
 static struct dentry *rpc_new_dir(struct dentry *parent, const char *name,
 				umode_t mode, void *private)
 {
-	struct inode *dir = parent->d_inode;
-	struct dentry *dentry = __rpc_lookup_create_exclusive(parent, name);
-	int err;
+	struct dentry *dentry;
 
-	if (IS_ERR(dentry))
-		return dentry;
-
-	err = __rpc_create_common(dir, dentry, S_IFDIR | mode, NULL, private);
-	if (err)
-		return ERR_PTR(err);
-	inc_nlink(dir);
-	fsnotify_mkdir(dir, dentry);
+	dentry = rpc_create_common(parent, name, S_IFDIR | mode, NULL, private);
+	if (!IS_ERR(dentry)) {
+		struct inode *dir = parent->d_inode;
+		inc_nlink(dir);
+		fsnotify_mkdir(dir, dentry);
+	}
 	return dentry;
 }
 
@@ -684,7 +659,6 @@ int rpc_mkpipe_dentry(struct dentry *parent, const char *name,
 	struct inode *dir = d_inode(parent);
 	umode_t umode = S_IFIFO | 0600;
 	struct rpc_inode *rpci;
-	int err;
 
 	if (pipe->ops->upcall == NULL)
 		umode &= ~0444;
@@ -692,13 +666,10 @@ int rpc_mkpipe_dentry(struct dentry *parent, const char *name,
 		umode &= ~0222;
 
 	inode_lock_nested(dir, I_MUTEX_PARENT);
-	dentry = __rpc_lookup_create_exclusive(parent, name);
+	dentry = rpc_create_common(parent, name, umode, &rpc_pipe_fops, private);
 	if (IS_ERR(dentry)) {
-		inode_unlock(dir);
-		return PTR_ERR(dentry);
-	}
-	err = __rpc_create_common(dir, dentry, umode, &rpc_pipe_fops, private);
-	if (unlikely(err)) {
+		int err = PTR_ERR(dentry);
+
 		pr_warn("%s() failed to create pipe %pd/%s (errno = %d)\n",
 			__func__, parent, name, err);
 		inode_unlock(dir);
