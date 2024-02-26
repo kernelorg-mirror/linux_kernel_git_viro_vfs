@@ -1371,15 +1371,15 @@ static int sel_make_bools(struct selinux_policy *newpolicy, struct dentry *bool_
 			ret = -ENAMETOOLONG;
 			break;
 		}
-		dentry = d_alloc_name(bool_dir, names[i]);
-		if (!dentry) {
+		dentry = d_alloc_persistent(bool_dir, names[i]);
+		if (IS_ERR(dentry)) {
 			ret = -ENOMEM;
 			break;
 		}
 
 		inode = sel_make_inode(bool_dir->d_sb, S_IFREG | S_IRUGO | S_IWUSR);
 		if (!inode) {
-			dput(dentry);
+			d_make_discardable(dentry);
 			ret = -ENOMEM;
 			break;
 		}
@@ -1595,13 +1595,13 @@ static int sel_make_avc_files(struct dentry *dir)
 		struct inode *inode;
 		struct dentry *dentry;
 
-		dentry = d_alloc_name(dir, files[i].name);
-		if (!dentry)
+		dentry = d_alloc_persistent(dir, files[i].name);
+		if (IS_ERR(dentry))
 			return -ENOMEM;
 
 		inode = sel_make_inode(dir->d_sb, S_IFREG|files[i].mode);
 		if (!inode) {
-			dput(dentry);
+			d_make_discardable(dentry);
 			return -ENOMEM;
 		}
 
@@ -1626,13 +1626,13 @@ static int sel_make_ss_files(struct dentry *dir)
 		struct inode *inode;
 		struct dentry *dentry;
 
-		dentry = d_alloc_name(dir, files[i].name);
-		if (!dentry)
+		dentry = d_alloc_persistent(dir, files[i].name);
+		if (IS_ERR(dentry))
 			return -ENOMEM;
 
 		inode = sel_make_inode(dir->d_sb, S_IFREG|files[i].mode);
 		if (!inode) {
-			dput(dentry);
+			d_make_discardable(dentry);
 			return -ENOMEM;
 		}
 
@@ -1677,13 +1677,13 @@ static int sel_make_initcon_files(struct dentry *dir)
 
 		if (!s)
 			continue;
-		dentry = d_alloc_name(dir, s);
-		if (!dentry)
+		dentry = d_alloc_persistent(dir, s);
+		if (IS_ERR(dentry))
 			return -ENOMEM;
 
 		inode = sel_make_inode(dir->d_sb, S_IFREG|S_IRUGO);
 		if (!inode) {
-			dput(dentry);
+			d_make_discardable(dentry);
 			return -ENOMEM;
 		}
 
@@ -1779,14 +1779,14 @@ static int sel_make_perm_files(struct selinux_policy *newpolicy,
 		struct dentry *dentry;
 
 		rc = -ENOMEM;
-		dentry = d_alloc_name(dir, perms[i]);
-		if (!dentry)
+		dentry = d_alloc_persistent(dir, perms[i]);
+		if (IS_ERR(dentry))
 			goto out;
 
 		rc = -ENOMEM;
 		inode = sel_make_inode(dir->d_sb, S_IFREG|S_IRUGO);
 		if (!inode) {
-			dput(dentry);
+			d_make_discardable(dentry);
 			goto out;
 		}
 
@@ -1812,13 +1812,13 @@ static int sel_make_class_dir_entries(struct selinux_policy *newpolicy,
 	struct dentry *dentry = NULL;
 	struct inode *inode = NULL;
 
-	dentry = d_alloc_name(dir, "index");
-	if (!dentry)
+	dentry = d_alloc_persistent(dir, "index");
+	if (IS_ERR(dentry))
 		return -ENOMEM;
 
 	inode = sel_make_inode(dir->d_sb, S_IFREG|S_IRUGO);
 	if (!inode) {
-		dput(dentry);
+		d_make_discardable(dentry);
 		return -ENOMEM;
 	}
 
@@ -1880,17 +1880,17 @@ static int sel_make_policycap(struct selinux_fs_info *fsi)
 
 	for (iter = 0; iter <= POLICYDB_CAP_MAX; iter++) {
 		if (iter < ARRAY_SIZE(selinux_policycap_names))
-			dentry = d_alloc_name(fsi->policycap_dir,
+			dentry = d_alloc_persistent(fsi->policycap_dir,
 					      selinux_policycap_names[iter]);
 		else
-			dentry = d_alloc_name(fsi->policycap_dir, "unknown");
+			dentry = d_alloc_persistent(fsi->policycap_dir, "unknown");
 
-		if (dentry == NULL)
+		if (IS_ERR(dentry))
 			return -ENOMEM;
 
 		inode = sel_make_inode(fsi->sb, S_IFREG | 0444);
 		if (inode == NULL) {
-			dput(dentry);
+			d_make_discardable(dentry);
 			return -ENOMEM;
 		}
 
@@ -1905,15 +1905,15 @@ static int sel_make_policycap(struct selinux_fs_info *fsi)
 static struct dentry *sel_make_dir(struct dentry *dir, const char *name,
 			unsigned long *ino)
 {
-	struct dentry *dentry = d_alloc_name(dir, name);
+	struct dentry *dentry = d_alloc_persistent(dir, name);
 	struct inode *inode;
 
-	if (!dentry)
-		return ERR_PTR(-ENOMEM);
+	if (IS_ERR(dentry))
+		return dentry;
 
 	inode = sel_make_inode(dir->d_sb, S_IFDIR | S_IRUGO | S_IXUGO);
 	if (!inode) {
-		dput(dentry);
+		d_make_discardable(dentry);
 		return ERR_PTR(-ENOMEM);
 	}
 
@@ -1942,15 +1942,15 @@ static const struct inode_operations swapover_dir_inode_operations = {
 static struct dentry *sel_make_swapover_dir(struct super_block *sb,
 						unsigned long *ino)
 {
-	struct dentry *dentry = d_alloc_name(sb->s_root, ".swapover");
+	struct dentry *dentry = d_alloc_persistent(sb->s_root, ".swapover");
 	struct inode *inode;
 
-	if (!dentry)
-		return ERR_PTR(-ENOMEM);
+	if (IS_ERR(dentry))
+		return dentry;
 
 	inode = sel_make_inode(sb, S_IFDIR);
 	if (!inode) {
-		dput(dentry);
+		d_make_discardable(dentry);
 		return ERR_PTR(-ENOMEM);
 	}
 
@@ -2015,14 +2015,14 @@ static int sel_fill_super(struct super_block *sb, struct fs_context *fc)
 	}
 
 	ret = -ENOMEM;
-	dentry = d_alloc_name(sb->s_root, NULL_FILE_NAME);
-	if (!dentry)
+	dentry = d_alloc_persistent(sb->s_root, NULL_FILE_NAME);
+	if (IS_ERR(dentry))
 		goto err;
 
 	ret = -ENOMEM;
 	inode = sel_make_inode(sb, S_IFCHR | S_IRUGO | S_IWUGO);
 	if (!inode) {
-		dput(dentry);
+		d_make_discardable(dentry);
 		goto err;
 	}
 
@@ -2114,7 +2114,7 @@ static int sel_init_fs_context(struct fs_context *fc)
 static void sel_kill_sb(struct super_block *sb)
 {
 	selinux_fs_info_free(sb);
-	kill_litter_super(sb);
+	kill_anon_super(sb);
 }
 
 static struct file_system_type sel_fs_type = {
