@@ -124,7 +124,7 @@ static int efivarfs_create(struct mnt_idmap *idmap, struct inode *dir,
 		goto out;
 
 	d_instantiate(dentry, inode);
-	dget(dentry);
+	d_make_persistent(dentry);
 out:
 	if (err) {
 		kfree(var);
@@ -142,7 +142,7 @@ static int efivarfs_unlink(struct inode *dir, struct dentry *dentry)
 		return -EINVAL;
 
 	drop_nlink(d_inode(dentry));
-	dput(dentry);
+	d_make_discardable(dentry);
 	return 0;
 };
 

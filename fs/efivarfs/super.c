@@ -164,26 +164,6 @@ static const struct dentry_operations efivarfs_d_ops = {
 	.d_delete = always_delete_dentry,
 };
 
-static struct dentry *efivarfs_alloc_dentry(struct dentry *parent, char *name)
-{
-	struct dentry *d;
-	struct qstr q;
-	int err;
-
-	q.name = name;
-	q.len = strlen(name);
-
-	err = efivarfs_d_hash(parent, &q);
-	if (err)
-		return ERR_PTR(err);
-
-	d = d_alloc(parent, &q);
-	if (d)
-		return d;
-
-	return ERR_PTR(-ENOMEM);
-}
-
 static int efivarfs_callback(efi_char16_t *name16, efi_guid_t vendor,
 			     unsigned long name_size, void *data,
 			     struct list_head *list)
@@ -234,7 +214,7 @@ static int efivarfs_callback(efi_char16_t *name16, efi_guid_t vendor,
 	if (!inode)
 		goto fail_name;
 
-	dentry = efivarfs_alloc_dentry(root, name);
+	dentry = d_alloc_persistent(root, name);
 	if (IS_ERR(dentry)) {
 		err = PTR_ERR(dentry);
 		goto fail_inode;
@@ -393,7 +373,7 @@ static void efivarfs_kill_sb(struct super_block *sb)
 	struct efivarfs_fs_info *sfi = sb->s_fs_info;
 
 	blocking_notifier_chain_unregister(&efivar_ops_nh, &sfi->nb);
-	kill_litter_super(sb);
+	kill_anon_super(sb);
 
 	/* Remove all entries and destroy */
 	efivar_entry_iter(efivarfs_destroy, &sfi->efivarfs_list, NULL);
