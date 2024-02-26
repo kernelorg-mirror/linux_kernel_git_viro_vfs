@@ -1173,22 +1173,20 @@ static struct dentry *nfsd_mkdir(struct dentry *parent, struct nfsdfs_client *nc
 {
 	struct inode *dir = parent->d_inode;
 	struct dentry *dentry;
-	int ret = -ENOMEM;
+	int ret;
 
 	inode_lock(dir);
-	dentry = d_alloc_name(parent, name);
-	if (!dentry)
-		goto out_err;
+	dentry = d_alloc_persistent(parent, name);
+	if (IS_ERR(dentry))
+		goto out;
 	ret = __nfsd_mkdir(d_inode(parent), dentry, S_IFDIR | 0600, ncl);
-	if (ret)
-		goto out_err;
+	if (unlikely(ret)) {
+		d_make_discardable(dentry);
+		dentry = ERR_PTR(ret);
+	}
 out:
 	inode_unlock(dir);
 	return dentry;
-out_err:
-	dput(dentry);
-	dentry = ERR_PTR(ret);
-	goto out;
 }
 
 #if IS_ENABLED(CONFIG_SUNRPC_GSS)
@@ -1222,12 +1220,12 @@ static void _nfsd_symlink(struct dentry *parent, const char *name,
 	int ret;
 
 	inode_lock(dir);
-	dentry = d_alloc_name(parent, name);
-	if (!dentry)
+	dentry = d_alloc_persistent(parent, name);
+	if (IS_ERR(dentry))
 		goto out;
 	ret = __nfsd_symlink(d_inode(parent), dentry, S_IFLNK | 0777, content);
 	if (ret)
-		dput(dentry);
+		d_make_discardable(dentry);
 out:
 	inode_unlock(dir);
 }
@@ -1276,13 +1274,13 @@ static  int nfsdfs_create_files(struct dentry *root,
 
 	inode_lock(dir);
 	for (i = 0; files->name && files->name[0]; i++, files++) {
-		dentry = d_alloc_name(root, files->name);
-		if (!dentry)
+		dentry = d_alloc_persistent(root, files->name);
+		if (IS_ERR(dentry))
 			goto out;
 		inode = nfsd_get_inode(d_inode(root)->i_sb,
 					S_IFREG | files->mode);
 		if (!inode) {
-			dput(dentry);
+			d_make_discardable(dentry);
 			goto out;
 		}
 		kref_get(&ncl->cl_ref);
@@ -1297,6 +1295,7 @@ static  int nfsdfs_create_files(struct dentry *root,
 	return 0;
 out:
 	inode_unlock(dir);
+	simple_recursive_removal(root, clear_ncl);	// parent is _not_ locked
 	return -ENOMEM;
 }
 
@@ -1316,10 +1315,8 @@ struct dentry *nfsd_client_mkdir(struct nfsd_net *nn,
 	if (IS_ERR(dentry)) /* XXX: tossing errors? */
 		return NULL;
 	ret = nfsdfs_create_files(dentry, files, ncl, fdentries);
-	if (ret) {
-		nfsd_client_rmdir(dentry);
+	if (ret)
 		return NULL;
-	}
 	return dentry;
 }
 
@@ -1408,7 +1405,7 @@ static void nfsd_umount(struct super_block *sb)
 
 	nfsd_shutdown_threads(net);
 
-	kill_litter_super(sb);
+	kill_anon_super(sb);
 	put_net(net);
 }
 
