@@ -599,7 +599,7 @@ static int mqueue_create_attr(struct dentry *dentry, umode_t mode, void *arg)
 	simple_inode_init_ts(dir);
 
 	d_instantiate(dentry, inode);
-	dget(dentry);
+	d_make_persistent(dentry);
 	return 0;
 out_unlock:
 	spin_unlock(&mq_lock);
@@ -621,7 +621,7 @@ static int mqueue_unlink(struct inode *dir, struct dentry *dentry)
 	simple_inode_init_ts(dir);
 	dir->i_size -= DIRENT_SIZE;
 	drop_nlink(inode);
-	dput(dentry);
+	d_make_discardable(dentry);
 	return 0;
 }
 
@@ -1682,7 +1682,7 @@ static const struct fs_context_operations mqueue_fs_context_ops = {
 static struct file_system_type mqueue_fs_type = {
 	.name			= "mqueue",
 	.init_fs_context	= mqueue_init_fs_context,
-	.kill_sb		= kill_litter_super,
+	.kill_sb		= kill_anon_super,
 	.fs_flags		= FS_USERNS_MOUNT,
 };
 
