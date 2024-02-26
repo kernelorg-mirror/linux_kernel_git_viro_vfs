@@ -31,18 +31,17 @@ static const struct inode_operations proc_self_inode_operations = {
 	.get_link	= proc_self_get_link,
 };
 
-static unsigned self_inum __ro_after_init;
+unsigned self_inum __ro_after_init;
 
 int proc_setup_self(struct super_block *s)
 {
 	struct inode *root_inode = d_inode(s->s_root);
-	struct proc_fs_info *fs_info = proc_sb_info(s);
 	struct dentry *self;
 	int ret = -ENOMEM;
 
 	inode_lock(root_inode);
-	self = d_alloc_name(s->s_root, "self");
-	if (self) {
+	self = d_alloc_persistent(s->s_root, "self");
+	if (!IS_ERR(self)) {
 		struct inode *inode = new_inode(s);
 		if (inode) {
 			inode->i_ino = self_inum;
@@ -54,15 +53,13 @@ int proc_setup_self(struct super_block *s)
 			d_add(self, inode);
 			ret = 0;
 		} else {
-			dput(self);
+			d_make_discardable(self);
 		}
 	}
 	inode_unlock(root_inode);
 
 	if (ret)
 		pr_err("proc_fill_super: can't allocate /proc/self\n");
-	else
-		fs_info->proc_self = self;
 
 	return ret;
 }
