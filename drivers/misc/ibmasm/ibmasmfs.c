@@ -103,7 +103,7 @@ static struct file_system_type ibmasmfs_type = {
 	.owner          = THIS_MODULE,
 	.name           = "ibmasmfs",
 	.init_fs_context = ibmasmfs_init_fs_context,
-	.kill_sb        = kill_litter_super,
+	.kill_sb        = kill_anon_super,
 };
 MODULE_ALIAS_FS("ibmasmfs");
 
@@ -153,13 +153,13 @@ static struct dentry *ibmasmfs_create_file(struct dentry *parent,
 	struct dentry *dentry;
 	struct inode *inode;
 
-	dentry = d_alloc_name(parent, name);
-	if (!dentry)
+	dentry = d_alloc_persistent(parent, name);
+	if (IS_ERR(dentry))
 		return NULL;
 
 	inode = ibmasmfs_make_inode(parent->d_sb, S_IFREG | mode);
 	if (!inode) {
-		dput(dentry);
+		d_make_discardable(dentry);
 		return NULL;
 	}
 
@@ -176,13 +176,13 @@ static struct dentry *ibmasmfs_create_dir(struct dentry *parent,
 	struct dentry *dentry;
 	struct inode *inode;
 
-	dentry = d_alloc_name(parent, name);
-	if (!dentry)
+	dentry = d_alloc_persistent(parent, name);
+	if (IS_ERR(dentry))
 		return NULL;
 
 	inode = ibmasmfs_make_inode(parent->d_sb, S_IFDIR | 0500);
 	if (!inode) {
-		dput(dentry);
+		d_make_discardable(dentry);
 		return NULL;
 	}
 
