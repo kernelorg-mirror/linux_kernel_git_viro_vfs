@@ -285,9 +285,7 @@ int afs_dynroot_mkdir(struct afs_net *net, struct afs_cell *cell)
 		ret = PTR_ERR(subdir);
 		goto unlock;
 	}
-
-	/* Note that we're retaining an extra ref on the dentry */
-	subdir->d_fsdata = (void *)1UL;
+	__d_mark_persistent(subdir); // lookup has already grabbed it
 	ret = 0;
 unlock:
 	inode_unlock(root->d_inode);
@@ -318,11 +316,8 @@ void afs_dynroot_rmdir(struct afs_net *net, struct afs_cell *cell)
 
 	_debug("rmdir %pd %u", subdir, d_count(subdir));
 
-	if (subdir->d_fsdata) {
-		_debug("unpin %u", d_count(subdir));
-		subdir->d_fsdata = NULL;
-		dput(subdir);
-	}
+	d_invalidate(subdir);
+	d_make_discardable(subdir);
 	dput(subdir);
 no_dentry:
 	inode_unlock(root->d_inode);
@@ -364,26 +359,10 @@ error:
 void afs_dynroot_depopulate(struct super_block *sb)
 {
 	struct afs_net *net = afs_sb2net(sb);
-	struct dentry *root = sb->s_root, *subdir;
 
 	/* Prevent more subdirs from being created */
 	mutex_lock(&net->proc_cells_lock);
 	if (net->dynroot_sb == sb)
 		net->dynroot_sb = NULL;
 	mutex_unlock(&net->proc_cells_lock);
-
-	if (root) {
-		struct hlist_node *n;
-		inode_lock(root->d_inode);
-
-		/* Remove all the pins for dirs created for manually added cells */
-		hlist_for_each_entry_safe(subdir, n, &root->d_children, d_sib) {
-			if (subdir->d_fsdata) {
-				subdir->d_fsdata = NULL;
-				dput(subdir);
-			}
-		}
-
-		inode_unlock(root->d_inode);
-	}
 }
