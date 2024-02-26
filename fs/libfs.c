@@ -581,7 +581,7 @@ void simple_recursive_removal(struct dentry *dentry,
 					fsnotify_unlink(inode, victim);
 				if (callback)
 					callback(victim);
-				dput(victim);		// unpin it
+				d_make_discardable(victim);
 			}
 			if (victim == dentry) {
 				inode_set_mtime_to_ts(inode,
@@ -686,7 +686,7 @@ int simple_link(struct dentry *old_dentry, struct inode *dir, struct dentry *den
 			      inode_set_ctime_to_ts(dir, inode_set_ctime_current(inode)));
 	inc_nlink(inode);
 	ihold(inode);
-	dget(dentry);
+	d_make_persistent(dentry);
 	d_instantiate(dentry, inode);
 	return 0;
 }
@@ -720,7 +720,7 @@ int simple_unlink(struct inode *dir, struct dentry *dentry)
 	inode_set_mtime_to_ts(dir,
 			      inode_set_ctime_to_ts(dir, inode_set_ctime_current(inode)));
 	drop_nlink(inode);
-	dput(dentry);
+	d_make_discardable(dentry);
 	return 0;
 }
 EXPORT_SYMBOL(simple_unlink);
@@ -987,12 +987,12 @@ int simple_fill_super(struct super_block *s, unsigned long magic,
 				"with an index of 1!\n", __func__,
 				s->s_type->name);
 
-		dentry = d_alloc_name(s->s_root, files->name);
-		if (!dentry)
+		dentry = d_alloc_persistent(s->s_root, files->name);
+		if (IS_ERR(dentry))
 			return -ENOMEM;
 		inode = new_inode(s);
 		if (!inode) {
-			dput(dentry);
+			d_make_discardable(dentry);
 			return -ENOMEM;
 		}
 		inode->i_mode = S_IFREG | files->mode;

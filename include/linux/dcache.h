@@ -186,6 +186,7 @@ struct dentry_operations {
 #define DCACHE_NFSFS_RENAMED		BIT(12)
      /* this dentry has been "silly renamed" and has to be deleted on the last
       * dput() */
+#define DCACHE_PERSISTENT		BIT(13)
 #define DCACHE_FSNOTIFY_PARENT_WATCHED	BIT(14)
      /* Parent inode is watched by some fsnotify listener */
 
@@ -596,5 +597,23 @@ static inline struct dentry *d_next_sibling(const struct dentry *dentry)
 {
 	return hlist_entry_safe(dentry->d_sib.next, struct dentry, d_sib);
 }
+
+static inline void d_make_persistent(struct dentry *dentry)
+{
+	spin_lock(&dentry->d_lock);
+	WARN_ON(dentry->d_flags & DCACHE_PERSISTENT);
+	dentry->d_flags |= DCACHE_PERSISTENT;
+	dget_dlock(dentry);
+	spin_unlock(&dentry->d_lock);
+}
+
+static inline void __d_mark_persistent(struct dentry *dentry)
+{
+	spin_lock(&dentry->d_lock);
+	dentry->d_flags |= DCACHE_PERSISTENT;
+	spin_unlock(&dentry->d_lock);
+}
+
+extern void d_make_discardable(struct dentry *dentry);
 
 #endif	/* __LINUX_DCACHE_H */
