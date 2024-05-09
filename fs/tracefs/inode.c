@@ -534,7 +534,7 @@ static struct file_system_type trace_fs_type = {
 	.owner =	THIS_MODULE,
 	.name =		"tracefs",
 	.mount =	trace_mount,
-	.kill_sb =	kill_litter_super,
+	.kill_sb =	kill_anon_super,
 };
 MODULE_ALIAS_FS("tracefs");
 
@@ -559,15 +559,7 @@ struct dentry *tracefs_start_creating(const char *name, struct dentry *parent)
 		parent = tracefs_mount->mnt_root;
 
 	inode_lock(d_inode(parent));
-	if (unlikely(IS_DEADDIR(d_inode(parent))))
-		dentry = ERR_PTR(-ENOENT);
-	else
-		dentry = lookup_one_len(name, parent, strlen(name));
-	if (!IS_ERR(dentry) && d_inode(dentry)) {
-		dput(dentry);
-		dentry = ERR_PTR(-EEXIST);
-	}
-
+	dentry = start_creating_persistent(parent, name);
 	if (IS_ERR(dentry)) {
 		inode_unlock(d_inode(parent));
 		simple_release_fs(&tracefs_mount, &tracefs_mount_count);
@@ -579,7 +571,7 @@ struct dentry *tracefs_start_creating(const char *name, struct dentry *parent)
 struct dentry *tracefs_failed_creating(struct dentry *dentry)
 {
 	inode_unlock(d_inode(dentry->d_parent));
-	dput(dentry);
+	d_make_discardable(dentry);
 	simple_release_fs(&tracefs_mount, &tracefs_mount_count);
 	return NULL;
 }
