@@ -11,6 +11,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/fs_context.h>
+#include <linux/namei.h>
 
 #define FUSE_CTL_SUPER_MAGIC 0x65735543
 
@@ -216,14 +217,13 @@ static struct dentry *fuse_ctl_add_dentry(struct dentry *parent,
 	struct dentry *dentry;
 	struct inode *inode;
 
-	BUG_ON(fc->ctl_ndents >= FUSE_CTL_NUM_DENTRIES);
-	dentry = d_alloc_name(parent, name);
-	if (!dentry)
+	dentry = d_alloc_persistent(parent, name);
+	if (IS_ERR(dentry))
 		return NULL;
 
 	inode = new_inode(fuse_control_sb);
 	if (!inode) {
-		dput(dentry);
+		d_make_discardable(dentry);
 		return NULL;
 	}
 
@@ -239,8 +239,6 @@ static struct dentry *fuse_ctl_add_dentry(struct dentry *parent,
 	set_nlink(inode, nlink);
 	inode->i_private = fc;
 	d_add(dentry, inode);
-
-	fc->ctl_dentry[fc->ctl_ndents++] = dentry;
 
 	return dentry;
 }
@@ -284,27 +282,30 @@ int fuse_ctl_add_conn(struct fuse_conn *fc)
 	return -ENOMEM;
 }
 
+static void remove_one(struct dentry *dentry)
+{
+	d_inode(dentry)->i_private = NULL;
+}
+
 /*
  * Remove a connection from the control filesystem (if it exists).
  * Caller must hold fuse_mutex
  */
 void fuse_ctl_remove_conn(struct fuse_conn *fc)
 {
-	int i;
+	struct dentry *dentry;
+	char name[32];
+	int namelen;
 
 	if (!fuse_control_sb || fc->no_control)
 		return;
 
-	for (i = fc->ctl_ndents - 1; i >= 0; i--) {
-		struct dentry *dentry = fc->ctl_dentry[i];
-		d_inode(dentry)->i_private = NULL;
-		if (!i) {
-			/* Get rid of submounts: */
-			d_invalidate(dentry);
-		}
-		dput(dentry);
+	namelen = sprintf(name, "%u", fc->dev);
+	dentry = lookup_positive_unlocked(name, fuse_control_sb->s_root, namelen);
+	if (!IS_ERR(dentry)) {
+		simple_recursive_removal(dentry, remove_one);
+		dput(dentry);	// paired with lookup_positive_unlocked()
 	}
-	drop_nlink(d_inode(fuse_control_sb->s_root));
 }
 
 static int fuse_ctl_fill_super(struct super_block *sb, struct fs_context *fsc)
@@ -350,15 +351,11 @@ static int fuse_ctl_init_fs_context(struct fs_context *fsc)
 
 static void fuse_ctl_kill_sb(struct super_block *sb)
 {
-	struct fuse_conn *fc;
-
 	mutex_lock(&fuse_mutex);
 	fuse_control_sb = NULL;
-	list_for_each_entry(fc, &fuse_conn_list, entry)
-		fc->ctl_ndents = 0;
 	mutex_unlock(&fuse_mutex);
 
-	kill_litter_super(sb);
+	kill_anon_super(sb);
 }
 
 static struct file_system_type fuse_ctl_fs_type = {
