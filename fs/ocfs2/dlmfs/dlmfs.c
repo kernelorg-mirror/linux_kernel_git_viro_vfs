@@ -441,7 +441,7 @@ static int dlmfs_mkdir(struct mnt_idmap * idmap,
 
 	inc_nlink(dir);
 	d_instantiate(dentry, inode);
-	dget(dentry);	/* Extra count - pin the dentry in core */
+	d_make_persistent(dentry);
 
 	status = 0;
 bail:
@@ -480,7 +480,7 @@ static int dlmfs_create(struct mnt_idmap *idmap,
 	}
 
 	d_instantiate(dentry, inode);
-	dget(dentry);	/* Extra count - pin the dentry in core */
+	d_make_persistent(dentry);
 bail:
 	return status;
 }
@@ -566,7 +566,7 @@ static struct file_system_type dlmfs_fs_type = {
 	.owner		= THIS_MODULE,
 	.name		= "ocfs2_dlmfs",
 	.mount		= dlmfs_mount,
-	.kill_sb	= kill_litter_super,
+	.kill_sb	= kill_anon_super,
 };
 MODULE_ALIAS_FS("ocfs2_dlmfs");
 
