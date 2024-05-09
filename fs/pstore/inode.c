@@ -316,8 +316,7 @@ int pstore_put_backend_records(struct pstore_info *psi)
 		list_for_each_entry_safe(pos, tmp, &records_list, list) {
 			if (pos->record->psi == psi) {
 				list_del_init(&pos->list);
-				d_invalidate(pos->dentry);
-				simple_unlink(d_inode(root), pos->dentry);
+				locked_recursive_removal(pos->dentry, NULL);
 				pos->dentry = NULL;
 			}
 		}
@@ -368,8 +367,8 @@ int pstore_mkfile(struct dentry *root, struct pstore_record *record)
 	if (!private)
 		return -ENOMEM;
 
-	dentry = d_alloc_name(root, name);
-	if (!dentry)
+	dentry = d_alloc_persistent(root, name);
+	if (IS_ERR(dentry))
 		return -ENOMEM;
 
 	private->dentry = dentry;
@@ -449,7 +448,7 @@ static void pstore_kill_sb(struct super_block *sb)
 	guard(mutex)(&pstore_sb_lock);
 	WARN_ON(pstore_sb && pstore_sb != sb);
 
-	kill_litter_super(sb);
+	kill_anon_super(sb);
 	pstore_sb = NULL;
 
 	guard(mutex)(&records_list_lock);
