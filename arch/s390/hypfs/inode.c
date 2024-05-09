@@ -310,7 +310,7 @@ static void hypfs_kill_super(struct super_block *sb)
 	struct hypfs_sb_info *sb_info = sb->s_fs_info;
 
 	hypfs_last_dentry = NULL;
-	kill_litter_super(sb);
+	kill_anon_super(sb);
 	kfree(sb_info);
 }
 
@@ -321,14 +321,14 @@ static struct dentry *hypfs_create_file(struct dentry *parent, const char *name,
 	struct inode *inode;
 
 	inode_lock(d_inode(parent));
-	dentry = lookup_one_len(name, parent, strlen(name));
+	dentry = start_creating_persistent(parent, name);
 	if (IS_ERR(dentry)) {
 		dentry = ERR_PTR(-ENOMEM);
 		goto fail;
 	}
 	inode = hypfs_make_inode(parent->d_sb, mode);
 	if (!inode) {
-		dput(dentry);
+		d_make_discardable(dentry);
 		dentry = ERR_PTR(-ENOMEM);
 		goto fail;
 	}
