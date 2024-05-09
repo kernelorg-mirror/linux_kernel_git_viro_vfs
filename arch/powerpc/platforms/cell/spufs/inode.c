@@ -158,13 +158,15 @@ static int spufs_fill_dir(struct dentry *dir,
 {
 	while (files->name && files->name[0]) {
 		int ret;
-		struct dentry *dentry = d_alloc_name(dir, files->name);
-		if (!dentry)
+		struct dentry *dentry = d_alloc_persistent(dir, files->name);
+		if (IS_ERR(dentry))
 			return -ENOMEM;
 		ret = spufs_new_file(dir->d_sb, dentry, files->ops,
 					files->mode & mode, files->size, ctx);
-		if (ret)
+		if (ret) {
+			d_make_discardable(dentry);
 			return ret;
+		}
 		files++;
 	}
 	return 0;
@@ -222,7 +224,7 @@ spufs_mkdir(struct inode *dir, struct dentry *dentry, unsigned int flags,
 
 	inode_lock(inode);
 
-	dget(dentry);
+	d_make_persistent(dentry);
 	inc_nlink(dir);
 	inc_nlink(inode);
 
@@ -738,7 +740,7 @@ static struct file_system_type spufs_type = {
 	.name = "spufs",
 	.init_fs_context = spufs_init_fs_context,
 	.parameters	= spufs_fs_parameters,
-	.kill_sb = kill_litter_super,
+	.kill_sb = kill_anon_super,
 };
 MODULE_ALIAS_FS("spufs");
 
