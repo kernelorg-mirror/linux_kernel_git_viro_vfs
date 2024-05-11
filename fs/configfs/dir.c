@@ -1031,14 +1031,11 @@ static int configfs_dump(struct configfs_dirent *sd, int level)
  * much on the stack, though, so folks that need this function - be careful
  * about your stack!  Patches will be accepted to make it iterative.
  */
-static int configfs_depend_prep(struct dentry *origin,
+static int configfs_depend_prep(struct configfs_dirent *sd,
 				struct config_item *target)
 {
-	struct configfs_dirent *child_sd, *sd;
+	struct configfs_dirent *child_sd;
 	int ret = 0;
-
-	BUG_ON(!origin || !origin->d_fsdata);
-	sd = origin->d_fsdata;
 
 	if (sd->s_element == target)  /* Boo-yah */
 		goto out;
@@ -1047,8 +1044,7 @@ static int configfs_depend_prep(struct dentry *origin,
 		if ((child_sd->s_type & CONFIGFS_DIR) &&
 		    !(child_sd->s_type & CONFIGFS_USET_DROPPING) &&
 		    !(child_sd->s_type & CONFIGFS_USET_CREATING)) {
-			ret = configfs_depend_prep(child_sd->s_dentry,
-						   target);
+			ret = configfs_depend_prep(child_sd, target);
 			if (!ret)
 				goto out;  /* Child path boo-yah */
 		}
@@ -1061,7 +1057,7 @@ out:
 	return ret;
 }
 
-static int configfs_do_depend_item(struct dentry *subsys_dentry,
+static int configfs_do_depend_item(struct configfs_dirent *subsys_sd,
 				   struct config_item *target)
 {
 	struct configfs_dirent *p;
@@ -1069,7 +1065,7 @@ static int configfs_do_depend_item(struct dentry *subsys_dentry,
 
 	spin_lock(&configfs_dirent_lock);
 	/* Scan the tree, return 0 if found */
-	ret = configfs_depend_prep(subsys_dentry, target);
+	ret = configfs_depend_prep(subsys_sd, target);
 	if (ret)
 		goto out_unlock_dirent_lock;
 
@@ -1135,7 +1131,7 @@ int configfs_depend_item(struct configfs_subsystem *subsys,
 	}
 
 	/* Ok, now we can trust subsys/s_item */
-	ret = configfs_do_depend_item(subsys_sd->s_dentry, target);
+	ret = configfs_do_depend_item(subsys_sd, target);
 
 out_unlock_fs:
 	inode_unlock(d_inode(root));
@@ -1237,7 +1233,7 @@ int configfs_depend_item_unlocked(struct configfs_subsystem *caller_subsys,
 	}
 
 	/* Now we can execute core of depend item */
-	ret = configfs_do_depend_item(subsys_sd->s_dentry, target);
+	ret = configfs_do_depend_item(subsys_sd, target);
 
 	if (target_subsys != caller_subsys)
 out_root_unlock:
