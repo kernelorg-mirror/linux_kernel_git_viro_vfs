@@ -489,9 +489,8 @@ done:
  * If there is an error, the caller will reset the flags via
  * configfs_detach_rollback().
  */
-static int configfs_detach_prep(struct dentry *dentry, struct dentry **wait)
+static int configfs_detach_prep(struct configfs_dirent *parent_sd, struct dentry **wait)
 {
-	struct configfs_dirent *parent_sd = dentry->d_fsdata;
 	struct configfs_dirent *sd;
 	int ret;
 
@@ -519,7 +518,7 @@ static int configfs_detach_prep(struct dentry *dentry, struct dentry **wait)
 			 * Yup, recursive.  If there's a problem, blame
 			 * deep nesting of default_groups
 			 */
-			ret = configfs_detach_prep(sd->s_dentry, wait);
+			ret = configfs_detach_prep(sd, wait);
 			if (!ret)
 				continue;
 		} else
@@ -536,16 +535,15 @@ out:
  * Walk the tree, resetting CONFIGFS_USET_DROPPING wherever it was
  * set.
  */
-static void configfs_detach_rollback(struct dentry *dentry)
+static void configfs_detach_rollback(struct configfs_dirent *parent_sd)
 {
-	struct configfs_dirent *parent_sd = dentry->d_fsdata;
 	struct configfs_dirent *sd;
 
 	parent_sd->s_type &= ~CONFIGFS_USET_DROPPING;
 
 	list_for_each_entry(sd, &parent_sd->s_children, s_sibling)
 		if (sd->s_type & CONFIGFS_USET_DEFAULT)
-			configfs_detach_rollback(sd->s_dentry);
+			configfs_detach_rollback(sd);
 }
 
 static void detach_attrs(struct config_item * item)
@@ -1475,9 +1473,9 @@ static int configfs_rmdir(struct inode *dir, struct dentry *dentry)
 		 */
 		ret = sd->s_dependent_count ? -EBUSY : 0;
 		if (!ret) {
-			ret = configfs_detach_prep(dentry, &wait);
+			ret = configfs_detach_prep(sd, &wait);
 			if (ret)
-				configfs_detach_rollback(dentry);
+				configfs_detach_rollback(sd);
 		}
 		spin_unlock(&configfs_dirent_lock);
 		mutex_unlock(&configfs_symlink_mutex);
@@ -1498,7 +1496,7 @@ static int configfs_rmdir(struct inode *dir, struct dentry *dentry)
 	frag = sd->s_frag;
 	if (down_write_killable(&frag->frag_sem)) {
 		spin_lock(&configfs_dirent_lock);
-		configfs_detach_rollback(dentry);
+		configfs_detach_rollback(sd);
 		spin_unlock(&configfs_dirent_lock);
 		config_item_put(parent_item);
 		return -EINTR;
@@ -1775,7 +1773,7 @@ void configfs_unregister_group(struct config_group *group)
 
 	inode_lock_nested(d_inode(parent), I_MUTEX_PARENT);
 	spin_lock(&configfs_dirent_lock);
-	configfs_detach_prep(dentry, NULL);
+	configfs_detach_prep(sd, NULL);
 	spin_unlock(&configfs_dirent_lock);
 
 	configfs_detach_group(&group->cg_item);
@@ -1919,7 +1917,7 @@ void configfs_unregister_subsystem(struct configfs_subsystem *subsys)
 	inode_lock_nested(d_inode(dentry), I_MUTEX_CHILD);
 	mutex_lock(&configfs_symlink_mutex);
 	spin_lock(&configfs_dirent_lock);
-	if (configfs_detach_prep(dentry, NULL)) {
+	if (configfs_detach_prep(sd, NULL)) {
 		pr_err("Tried to unregister non-empty subsystem!\n");
 	}
 	spin_unlock(&configfs_dirent_lock);
