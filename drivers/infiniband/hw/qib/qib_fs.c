@@ -55,7 +55,7 @@ static int qibfs_mknod(struct inode *dir, struct dentry *dentry,
 	struct inode *inode = new_inode(dir->i_sb);
 
 	if (!inode) {
-		dput(dentry);
+		d_make_discardable(dentry);
 		error = -EPERM;
 		goto bail;
 	}
@@ -90,7 +90,7 @@ static int create_file(const char *name, umode_t mode,
 	int error;
 
 	inode_lock(d_inode(parent));
-	*dentry = lookup_one_len(name, parent, strlen(name));
+	*dentry = start_creating_persistent(parent, name);
 	if (!IS_ERR(*dentry))
 		error = qibfs_mknod(d_inode(parent), *dentry,
 				    mode, fops, data);
@@ -497,7 +497,7 @@ static int qibfs_init_fs_context(struct fs_context *fc)
 
 static void qibfs_kill_super(struct super_block *s)
 {
-	kill_litter_super(s);
+	kill_anon_super(s);
 	qib_super = NULL;
 }
 
