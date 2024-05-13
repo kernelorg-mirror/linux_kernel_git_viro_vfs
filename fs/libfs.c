@@ -2146,3 +2146,22 @@ void stashed_dentry_prune(struct dentry *dentry)
 	 */
 	cmpxchg(stashed, dentry, NULL);
 }
+
+/* parent must be held exclusive */
+struct dentry *start_creating_persistent(struct dentry *parent, const char *name)
+{
+	struct dentry *dentry;
+
+	if (unlikely(IS_DEADDIR(d_inode(parent))))
+		return ERR_PTR(-ENOENT);
+	dentry = lookup_one_len(name, parent, strlen(name));
+	if (IS_ERR(dentry))
+		return dentry;
+	if (dentry->d_inode) {
+		dput(dentry);
+		return ERR_PTR(-EEXIST);
+	}
+	__d_mark_persistent(dentry);
+	return dentry;
+}
+EXPORT_SYMBOL(start_creating_persistent);
