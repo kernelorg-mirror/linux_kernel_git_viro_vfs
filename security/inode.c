@@ -70,7 +70,7 @@ static struct file_system_type fs_type = {
 	.owner =	THIS_MODULE,
 	.name =		"securityfs",
 	.init_fs_context = securityfs_init_fs_context,
-	.kill_sb =	kill_litter_super,
+	.kill_sb =	kill_anon_super,
 };
 
 /**
@@ -128,19 +128,15 @@ static struct dentry *securityfs_create_dentry(const char *name, umode_t mode,
 	dir = d_inode(parent);
 
 	inode_lock(dir);
-	dentry = lookup_one_len(name, parent, strlen(name));
+	dentry = start_creating_persistent(parent, name);
 	if (IS_ERR(dentry))
 		goto out;
 
-	if (d_really_is_positive(dentry)) {
-		error = -EEXIST;
-		goto out1;
-	}
-
 	inode = new_inode(dir->i_sb);
-	if (!inode) {
-		error = -ENOMEM;
-		goto out1;
+	if (unlikely(!inode)) {
+		d_make_discardable(dentry);
+		dentry = ERR_PTR(-ENOMEM);
+		goto out;
 	}
 
 	inode->i_ino = get_next_ino();
@@ -159,13 +155,9 @@ static struct dentry *securityfs_create_dentry(const char *name, umode_t mode,
 		inode->i_fop = fops;
 	}
 	d_instantiate(dentry, inode);
-	dget(dentry);
 	inode_unlock(dir);
 	return dentry;
 
-out1:
-	dput(dentry);
-	dentry = ERR_PTR(error);
 out:
 	inode_unlock(dir);
 	simple_release_fs(&mount, &mount_count);
@@ -281,7 +273,6 @@ EXPORT_SYMBOL_GPL(securityfs_create_symlink);
 
 static void clear_one(struct dentry *victim)
 {
-	dput(victim);	// for now; will be gone once refcounting gets sane
 	simple_release_fs(&mount, &mount_count);
 }
 
