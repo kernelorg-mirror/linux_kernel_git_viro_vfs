@@ -279,6 +279,13 @@ struct dentry *securityfs_create_symlink(const char *name,
 }
 EXPORT_SYMBOL_GPL(securityfs_create_symlink);
 
+static void clear_one(struct dentry *victim)
+{
+	dput(victim);	// for now; will be gone once refcounting gets sane
+	simple_release_fs(&mount, &mount_count);
+}
+
+
 /**
  * securityfs_remove - removes a file or directory from the securityfs filesystem
  *
@@ -291,24 +298,17 @@ EXPORT_SYMBOL_GPL(securityfs_create_symlink);
  * This function is required to be called in order for the file to be
  * removed. No automatic cleanup of files will happen when a module is
  * removed; you are responsible here.
+ *
+ * AV: when applied to directory it will take all children out; no need to call
+ * it for descendents if ancestor is getting killed.
  */
 void securityfs_remove(struct dentry *dentry)
 {
-	struct inode *dir;
-
 	if (!dentry || IS_ERR(dentry))
 		return;
 
-	dir = d_inode(dentry->d_parent);
-	inode_lock(dir);
-	if (simple_positive(dentry)) {
-		if (d_is_dir(dentry))
-			simple_rmdir(dir, dentry);
-		else
-			simple_unlink(dir, dentry);
-		dput(dentry);
-	}
-	inode_unlock(dir);
+	simple_pin_fs(&fs_type, &mount, &mount_count);
+	simple_recursive_removal(dentry, clear_one);
 	simple_release_fs(&mount, &mount_count);
 }
 EXPORT_SYMBOL_GPL(securityfs_remove);

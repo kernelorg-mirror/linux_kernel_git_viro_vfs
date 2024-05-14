@@ -139,9 +139,13 @@ static int efi_secret_unlink(struct inode *dir, struct dentry *dentry)
 	/*
 	 * securityfs_remove tries to lock the directory's inode, but we reach
 	 * the unlink callback when it's already locked
+	 *
+	 * AV: this is really, really racy.
 	 */
 	inode_unlock(dir);
+	inode_unlock(inode);
 	securityfs_remove(dentry);
+	inode_lock(inode);
 	inode_lock(dir);
 
 	return 0;
