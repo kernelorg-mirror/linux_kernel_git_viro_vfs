@@ -675,44 +675,6 @@ static void bm_evict_inode(struct inode *inode)
 }
 
 /**
- * unlink_binfmt_dentry - remove the dentry for the binary type handler
- * @dentry: dentry associated with the binary type handler
- *
- * Do the actual filesystem work to remove a dentry for a registered binary
- * type handler. Since binfmt_misc only allows simple files to be created
- * directly under the root dentry of the filesystem we ensure that we are
- * indeed passed a dentry directly beneath the root dentry, that the inode
- * associated with the root dentry is locked, and that it is a regular file we
- * are asked to remove.
- */
-static void unlink_binfmt_dentry(struct dentry *dentry)
-{
-	struct dentry *parent = dentry->d_parent;
-	struct inode *inode, *parent_inode;
-
-	/* All entries are immediate descendants of the root dentry. */
-	if (WARN_ON_ONCE(dentry->d_sb->s_root != parent))
-		return;
-
-	/* We only expect to be called on regular files. */
-	inode = d_inode(dentry);
-	if (WARN_ON_ONCE(!S_ISREG(inode->i_mode)))
-		return;
-
-	/* The parent inode must be locked. */
-	parent_inode = d_inode(parent);
-	if (WARN_ON_ONCE(!inode_is_locked(parent_inode)))
-		return;
-
-	if (simple_positive(dentry)) {
-		dget(dentry);
-		simple_unlink(parent_inode, dentry);
-		d_delete(dentry);
-		dput(dentry);
-	}
-}
-
-/**
  * remove_binfmt_handler - remove a binary type handler
  * @misc: handle to binfmt_misc instance
  * @e: binary type handler to remove
@@ -729,7 +691,7 @@ static void remove_binfmt_handler(struct binfmt_misc *misc, Node *e)
 	write_lock(&misc->entries_lock);
 	list_del_init(&e->list);
 	write_unlock(&misc->entries_lock);
-	unlink_binfmt_dentry(e->dentry);
+	locked_recursive_removal(e->dentry, NULL);
 }
 
 /* /<entry> */
@@ -803,14 +765,41 @@ static const struct file_operations bm_entry_operations = {
 
 /* /register */
 
+/* add to filesystem; root directory should be held exclusive */
+static int add_entry(Node *e, struct super_block *sb)
+{
+	struct dentry *dentry = start_creating_persistent(sb->s_root, e->name);
+	struct inode *inode;
+	struct binfmt_misc *misc;
+
+	if (IS_ERR(dentry))
+		return PTR_ERR(dentry);
+
+	inode = bm_get_inode(sb, S_IFREG | 0644);
+	if (unlikely(!inode)) {
+		d_make_discardable(dentry);
+		return -ENOMEM;
+	}
+
+	refcount_set(&e->users, 1);
+	e->dentry = dentry;
+	inode->i_private = e;
+	inode->i_fop = &bm_entry_operations;
+
+	d_instantiate(dentry, inode);
+	misc = i_binfmt_misc(inode);
+	write_lock(&misc->entries_lock);
+	list_add(&e->list, &misc->entries);
+	write_unlock(&misc->entries_lock);
+	return 0;
+}
+
 static ssize_t bm_register_write(struct file *file, const char __user *buffer,
 			       size_t count, loff_t *ppos)
 {
 	Node *e;
-	struct inode *inode;
 	struct super_block *sb = file_inode(file)->i_sb;
-	struct dentry *root = sb->s_root, *dentry;
-	struct binfmt_misc *misc;
+	struct inode *root = sb->s_root->d_inode;
 	int err = 0;
 	struct file *f = NULL;
 
@@ -841,38 +830,9 @@ static ssize_t bm_register_write(struct file *file, const char __user *buffer,
 		e->interp_file = f;
 	}
 
-	inode_lock(d_inode(root));
-	dentry = lookup_one_len(e->name, root, strlen(e->name));
-	err = PTR_ERR(dentry);
-	if (IS_ERR(dentry))
-		goto out;
-
-	err = -EEXIST;
-	if (d_really_is_positive(dentry))
-		goto out2;
-
-	inode = bm_get_inode(sb, S_IFREG | 0644);
-
-	err = -ENOMEM;
-	if (!inode)
-		goto out2;
-
-	refcount_set(&e->users, 1);
-	e->dentry = dget(dentry);
-	inode->i_private = e;
-	inode->i_fop = &bm_entry_operations;
-
-	d_instantiate(dentry, inode);
-	misc = i_binfmt_misc(inode);
-	write_lock(&misc->entries_lock);
-	list_add(&e->list, &misc->entries);
-	write_unlock(&misc->entries_lock);
-
-	err = 0;
-out2:
-	dput(dentry);
-out:
-	inode_unlock(d_inode(root));
+	inode_lock(root);
+	err = add_entry(e, sb);
+	inode_unlock(root);
 
 	if (err) {
 		if (f)
@@ -1066,7 +1026,7 @@ static struct file_system_type bm_fs_type = {
 	.name		= "binfmt_misc",
 	.init_fs_context = bm_init_fs_context,
 	.fs_flags	= FS_USERNS_MOUNT,
-	.kill_sb	= kill_litter_super,
+	.kill_sb	= kill_anon_super,
 };
 MODULE_ALIAS_FS("binfmt_misc");
 
