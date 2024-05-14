@@ -358,11 +358,6 @@ out:
 
 static struct dentry *ima_dir;
 static struct dentry *ima_symlink;
-static struct dentry *binary_runtime_measurements;
-static struct dentry *ascii_runtime_measurements;
-static struct dentry *runtime_measurements_count;
-static struct dentry *violations;
-static struct dentry *ima_policy;
 
 enum ima_fs_flags {
 	IMA_FS_BUSY,
@@ -452,6 +447,7 @@ static const struct file_operations ima_measure_policy_ops = {
 
 int __init ima_fs_init(void)
 {
+	struct dentry *dentry;
 	int ret;
 
 	ima_dir = securityfs_create_dir("ima", integrity_dir);
@@ -465,56 +461,47 @@ int __init ima_fs_init(void)
 		goto out;
 	}
 
-	binary_runtime_measurements =
-	    securityfs_create_file("binary_runtime_measurements",
+	dentry = securityfs_create_file("binary_runtime_measurements",
 				   S_IRUSR | S_IRGRP, ima_dir, NULL,
 				   &ima_measurements_ops);
-	if (IS_ERR(binary_runtime_measurements)) {
-		ret = PTR_ERR(binary_runtime_measurements);
+	if (IS_ERR(dentry)) {
+		ret = PTR_ERR(dentry);
 		goto out;
 	}
 
-	ascii_runtime_measurements =
-	    securityfs_create_file("ascii_runtime_measurements",
+	dentry = securityfs_create_file("ascii_runtime_measurements",
 				   S_IRUSR | S_IRGRP, ima_dir, NULL,
 				   &ima_ascii_measurements_ops);
-	if (IS_ERR(ascii_runtime_measurements)) {
-		ret = PTR_ERR(ascii_runtime_measurements);
+	if (IS_ERR(dentry)) {
+		ret = PTR_ERR(dentry);
 		goto out;
 	}
 
-	runtime_measurements_count =
-	    securityfs_create_file("runtime_measurements_count",
+	dentry = securityfs_create_file("runtime_measurements_count",
 				   S_IRUSR | S_IRGRP, ima_dir, NULL,
 				   &ima_measurements_count_ops);
-	if (IS_ERR(runtime_measurements_count)) {
-		ret = PTR_ERR(runtime_measurements_count);
+	if (IS_ERR(dentry)) {
+		ret = PTR_ERR(dentry);
 		goto out;
 	}
 
-	violations =
-	    securityfs_create_file("violations", S_IRUSR | S_IRGRP,
+	dentry = securityfs_create_file("violations", S_IRUSR | S_IRGRP,
 				   ima_dir, NULL, &ima_htable_violations_ops);
-	if (IS_ERR(violations)) {
-		ret = PTR_ERR(violations);
+	if (IS_ERR(dentry)) {
+		ret = PTR_ERR(dentry);
 		goto out;
 	}
 
-	ima_policy = securityfs_create_file("policy", POLICY_FILE_FLAGS,
+	dentry = securityfs_create_file("policy", POLICY_FILE_FLAGS,
 					    ima_dir, NULL,
 					    &ima_measure_policy_ops);
-	if (IS_ERR(ima_policy)) {
-		ret = PTR_ERR(ima_policy);
+	if (IS_ERR(dentry)) {
+		ret = PTR_ERR(dentry);
 		goto out;
 	}
 
 	return 0;
 out:
-	securityfs_remove(ima_policy);
-	securityfs_remove(violations);
-	securityfs_remove(runtime_measurements_count);
-	securityfs_remove(ascii_runtime_measurements);
-	securityfs_remove(binary_runtime_measurements);
 	securityfs_remove(ima_symlink);
 	securityfs_remove(ima_dir);
 
