@@ -39,6 +39,8 @@ algorithms work.
 
    caching/index
 
+   rcu-exposure
+
    porting
 
 Filesystem support layers
