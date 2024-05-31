@@ -44,13 +44,26 @@ static inline void fput_light(struct file *file, int fput_needed)
 struct fd {
 	unsigned long word;
 };
+
+/* either a reference to struct file + flags
+ * (cloned vs. borrowed, pos locked), with
+ * flags stored in lower bits of value,
+ * or an error (represented by small negative value).
+ */
+struct fderr {
+	unsigned long word;
+};
+
 #define FDPUT_FPUT       1
 #define FDPUT_POS_UNLOCK 2
 
+#define fd_empty(f)	_Generic((f), \
+				struct fd: unlikely(!(f).word), \
+				struct fderr: IS_ERR_VALUE((f).word))
 #define fd_file(f) ((struct file *)((f).word & ~(FDPUT_FPUT|FDPUT_POS_UNLOCK)))
-static inline bool fd_empty(struct fd f)
+static inline long fd_err(struct fderr f)
 {
-	return unlikely(!f.word);
+	return (long)f.word;
 }
 
 #define EMPTY_FD (struct fd){0}
@@ -63,11 +76,25 @@ static inline struct fd CLONED_FD(struct file *f)
 	return (struct fd){(unsigned long)f | FDPUT_FPUT};
 }
 
-static inline void fdput(struct fd fd)
+static inline struct fderr ERR_FDERR(long n)
 {
-	if (fd.word & FDPUT_FPUT)
-		fput(fd_file(fd));
+	return (struct fderr){(unsigned long)n};
 }
+static inline struct fderr BORROWED_FDERR(struct file *f)
+{
+	return (struct fderr){(unsigned long)f};
+}
+static inline struct fderr CLONED_FDERR(struct file *f)
+{
+	if (IS_ERR(f))
+		return BORROWED_FDERR(f);
+	return (struct fderr){(unsigned long)f | FDPUT_FPUT};
+}
+
+#define fdput(f)	(void) (_Generic((f), \
+				struct fderr: !IS_ERR_VALUE((f).word),	\
+				struct fd: true) && \
+			    ((f).word & FDPUT_FPUT) && (fput(fd_file(f)),0))
 
 extern struct file *fget(unsigned int fd);
 extern struct file *fget_raw(unsigned int fd);
