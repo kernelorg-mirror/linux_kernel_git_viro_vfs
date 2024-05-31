@@ -89,15 +89,12 @@ static int ovl_change_flags(struct file *file, unsigned int flags)
 	return 0;
 }
 
-static int ovl_real_fdget_meta(const struct file *file, struct fd *real,
-			       bool allow_meta)
+static struct fderr ovl_real_fdget_meta(const struct file *file, bool allow_meta)
 {
 	struct dentry *dentry = file_dentry(file);
 	struct file *private = file->private_data;
 	struct path realpath;
 	int err;
-
-	real->word = (unsigned long)private;
 
 	if (allow_meta) {
 		ovl_path_real(dentry, &realpath);
@@ -105,41 +102,37 @@ static int ovl_real_fdget_meta(const struct file *file, struct fd *real,
 		/* lazy lookup and verify of lowerdata */
 		err = ovl_verify_lowerdata(dentry);
 		if (err)
-			return err;
+			return ERR_FD(err);
 
 		ovl_path_realdata(dentry, &realpath);
 	}
 	if (!realpath.dentry)
-		return -EIO;
+		return ERR_FD(-EIO);
 
 	/* Has it been copied up since we'd opened it? */
 	if (unlikely(file_inode(private) != d_inode(realpath.dentry))) {
-		struct file *f = ovl_open_realfile(file, &realpath);
-		if (IS_ERR(f))
-			return PTR_ERR(f);
-		real->word = (unsigned long)ovl_open_realfile(file, &realpath) | FDPUT_FPUT;
-		return 0;
+		return CLONED_FDERR(ovl_open_realfile(file, &realpath));
 	}
 
 	/* Did the flags change since open? */
-	if (unlikely((file->f_flags ^ private->f_flags) & ~OVL_OPEN_FLAGS))
-		return ovl_change_flags(private, file->f_flags);
-
-	return 0;
-}
-
-static int ovl_real_fdget(const struct file *file, struct fd *real)
-{
-	if (d_is_dir(file_dentry(file))) {
-		struct file *f = ovl_dir_real_file(file, false);
-		if (IS_ERR(f))
-			return PTR_ERR(f);
-		real->word = (unsigned long)f;
-		return 0;
+	if (unlikely((file->f_flags ^ private->f_flags) & ~OVL_OPEN_FLAGS)) {
+		err = ovl_change_flags(private, file->f_flags);
+		if (err)
+			return ERR_FD(err);
 	}
 
-	return ovl_real_fdget_meta(file, real, false);
+	return BORROWED_FDERR(private);
 }
+
+static struct fderr ovl_real_fdget(const struct file *file)
+{
+	if (d_is_dir(file_dentry(file)))
+		return BORROWED_FDERR(ovl_dir_real_file(file, false));
+
+	return ovl_real_fdget_meta(file, false);
+}
+
+DEFINE_CLASS(fd_real, struct fderr, fdput_err(_T), ovl_real_fdget(file), struct file *file)
 
 static int ovl_open(struct inode *inode, struct file *file)
 {
@@ -183,7 +176,6 @@ static int ovl_release(struct inode *inode, struct file *file)
 static loff_t ovl_llseek(struct file *file, loff_t offset, int whence)
 {
 	struct inode *inode = file_inode(file);
-	struct fd real;
 	const struct cred *old_cred;
 	loff_t ret;
 
@@ -199,9 +191,9 @@ static loff_t ovl_llseek(struct file *file, loff_t offset, int whence)
 			return vfs_setpos(file, 0, 0);
 	}
 
-	ret = ovl_real_fdget(file, &real);
-	if (ret)
-		return ret;
+	CLASS(fd_real, real)(file);
+	if (fd_empty(real))
+		return fd_error(real);
 
 	/*
 	 * Overlay file f_pos is the master copy that is preserved
@@ -219,8 +211,6 @@ static loff_t ovl_llseek(struct file *file, loff_t offset, int whence)
 
 	file->f_pos = fd_file(real)->f_pos;
 	ovl_inode_unlock(inode);
-
-	fdput(real);
 
 	return ret;
 }
@@ -262,8 +252,6 @@ static void ovl_file_accessed(struct file *file)
 static ssize_t ovl_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 {
 	struct file *file = iocb->ki_filp;
-	struct fd real;
-	ssize_t ret;
 	struct backing_file_ctx ctx = {
 		.cred = ovl_creds(file_inode(file)->i_sb),
 		.user_file = file,
@@ -273,22 +261,18 @@ static ssize_t ovl_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 	if (!iov_iter_count(iter))
 		return 0;
 
-	ret = ovl_real_fdget(file, &real);
-	if (ret)
-		return ret;
+	CLASS(fd_real, real)(file);
+	if (fd_empty(real))
+		return fd_error(real);
 
-	ret = backing_file_read_iter(fd_file(real), iter, iocb, iocb->ki_flags,
-				     &ctx);
-	fdput(real);
-
-	return ret;
+	return backing_file_read_iter(fd_file(real), iter, iocb, iocb->ki_flags,
+				      &ctx);
 }
 
 static ssize_t ovl_write_iter(struct kiocb *iocb, struct iov_iter *iter)
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file_inode(file);
-	struct fd real;
 	ssize_t ret;
 	int ifl = iocb->ki_flags;
 	struct backing_file_ctx ctx = {
@@ -304,9 +288,11 @@ static ssize_t ovl_write_iter(struct kiocb *iocb, struct iov_iter *iter)
 	/* Update mode */
 	ovl_copyattr(inode);
 
-	ret = ovl_real_fdget(file, &real);
-	if (ret)
+	CLASS(fd_real, real)(file);
+	if (fd_empty(real)) {
+		ret = fd_error(real);
 		goto out_unlock;
+	}
 
 	if (!ovl_should_sync(OVL_FS(inode->i_sb)))
 		ifl &= ~(IOCB_DSYNC | IOCB_SYNC);
@@ -317,7 +303,6 @@ static ssize_t ovl_write_iter(struct kiocb *iocb, struct iov_iter *iter)
 	 */
 	ifl &= ~IOCB_DIO_CALLER_COMP;
 	ret = backing_file_write_iter(fd_file(real), iter, iocb, ifl, &ctx);
-	fdput(real);
 
 out_unlock:
 	inode_unlock(inode);
@@ -329,22 +314,18 @@ static ssize_t ovl_splice_read(struct file *in, loff_t *ppos,
 			       struct pipe_inode_info *pipe, size_t len,
 			       unsigned int flags)
 {
-	struct fd real;
-	ssize_t ret;
+	CLASS(fd_real, real)(in);
 	struct backing_file_ctx ctx = {
 		.cred = ovl_creds(file_inode(in)->i_sb),
 		.user_file = in,
 		.accessed = ovl_file_accessed,
 	};
 
-	ret = ovl_real_fdget(in, &real);
-	if (ret)
-		return ret;
+	if (fd_empty(real))
+		return fd_error(real);
 
-	ret = backing_file_splice_read(fd_file(real), ppos, pipe, len, flags, &ctx);
-	fdput(real);
-
-	return ret;
+	return backing_file_splice_read(fd_file(real), ppos, pipe, len, flags,
+					&ctx);
 }
 
 /*
@@ -358,7 +339,6 @@ static ssize_t ovl_splice_read(struct file *in, loff_t *ppos,
 static ssize_t ovl_splice_write(struct pipe_inode_info *pipe, struct file *out,
 				loff_t *ppos, size_t len, unsigned int flags)
 {
-	struct fd real;
 	struct inode *inode = file_inode(out);
 	ssize_t ret;
 	struct backing_file_ctx ctx = {
@@ -371,13 +351,13 @@ static ssize_t ovl_splice_write(struct pipe_inode_info *pipe, struct file *out,
 	/* Update mode */
 	ovl_copyattr(inode);
 
-	ret = ovl_real_fdget(out, &real);
-	if (ret)
+	CLASS(fd_real, real)(out);
+	if (fd_empty(real)) {
+		ret = fd_error(real);
 		goto out_unlock;
+	}
 
 	ret = backing_file_splice_write(pipe, fd_file(real), ppos, len, flags, &ctx);
-	fdput(real);
-
 out_unlock:
 	inode_unlock(inode);
 
@@ -386,7 +366,7 @@ out_unlock:
 
 static int ovl_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 {
-	struct fd real;
+	struct fderr real;
 	const struct cred *old_cred;
 	int ret;
 
@@ -394,9 +374,9 @@ static int ovl_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 	if (ret <= 0)
 		return ret;
 
-	ret = ovl_real_fdget_meta(file, &real, !datasync);
-	if (ret)
-		return ret;
+	real = ovl_real_fdget_meta(file, !datasync);
+	if (fd_empty(real))
+		return fd_error(real);
 
 	/* Don't sync lower file for fear of receiving EROFS error */
 	if (file_inode(fd_file(real)) == ovl_inode_upper(file_inode(file))) {
@@ -405,7 +385,7 @@ static int ovl_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 		revert_creds(old_cred);
 	}
 
-	fdput(real);
+	fdput_err(real);
 
 	return ret;
 }
@@ -425,7 +405,6 @@ static int ovl_mmap(struct file *file, struct vm_area_struct *vma)
 static long ovl_fallocate(struct file *file, int mode, loff_t offset, loff_t len)
 {
 	struct inode *inode = file_inode(file);
-	struct fd real;
 	const struct cred *old_cred;
 	int ret;
 
@@ -436,9 +415,11 @@ static long ovl_fallocate(struct file *file, int mode, loff_t offset, loff_t len
 	if (ret)
 		goto out_unlock;
 
-	ret = ovl_real_fdget(file, &real);
-	if (ret)
+	CLASS(fd_real, real)(file);
+	if (fd_empty(real)) {
+		ret = fd_error(real);
 		goto out_unlock;
+	}
 
 	old_cred = ovl_override_creds(file_inode(file)->i_sb);
 	ret = vfs_fallocate(fd_file(real), mode, offset, len);
@@ -446,8 +427,6 @@ static long ovl_fallocate(struct file *file, int mode, loff_t offset, loff_t len
 
 	/* Update size */
 	ovl_file_modified(file);
-
-	fdput(real);
 
 out_unlock:
 	inode_unlock(inode);
@@ -457,19 +436,16 @@ out_unlock:
 
 static int ovl_fadvise(struct file *file, loff_t offset, loff_t len, int advice)
 {
-	struct fd real;
+	CLASS(fd_real, real)(file);
 	const struct cred *old_cred;
 	int ret;
 
-	ret = ovl_real_fdget(file, &real);
-	if (ret)
-		return ret;
+	if (fd_empty(real))
+		return fd_error(real);
 
 	old_cred = ovl_override_creds(file_inode(file)->i_sb);
 	ret = vfs_fadvise(fd_file(real), offset, len, advice);
 	revert_creds(old_cred);
-
-	fdput(real);
 
 	return ret;
 }
@@ -485,7 +461,6 @@ static loff_t ovl_copyfile(struct file *file_in, loff_t pos_in,
 			    loff_t len, unsigned int flags, enum ovl_copyop op)
 {
 	struct inode *inode_out = file_inode(file_out);
-	struct fd real_in, real_out;
 	const struct cred *old_cred;
 	loff_t ret;
 
@@ -498,13 +473,15 @@ static loff_t ovl_copyfile(struct file *file_in, loff_t pos_in,
 			goto out_unlock;
 	}
 
-	ret = ovl_real_fdget(file_out, &real_out);
-	if (ret)
+	CLASS(fd_real, real_out)(file_out);
+	if (fd_empty(real_out)) {
+		ret = fd_error(real_out);
 		goto out_unlock;
+	}
 
-	ret = ovl_real_fdget(file_in, &real_in);
-	if (ret) {
-		fdput(real_out);
+	CLASS(fd_real, real_in)(file_in);
+	if (fd_empty(real_in)) {
+		ret = fd_error(real_in);
 		goto out_unlock;
 	}
 
@@ -530,9 +507,6 @@ static loff_t ovl_copyfile(struct file *file_in, loff_t pos_in,
 
 	/* Update size */
 	ovl_file_modified(file_out);
-
-	fdput(real_in);
-	fdput(real_out);
 
 out_unlock:
 	inode_unlock(inode_out);
@@ -577,21 +551,18 @@ static loff_t ovl_remap_file_range(struct file *file_in, loff_t pos_in,
 
 static int ovl_flush(struct file *file, fl_owner_t id)
 {
-	struct fd real;
+	CLASS(fd_real, real)(file);
 	const struct cred *old_cred;
-	int err;
+	int err = 0;
 
-	err = ovl_real_fdget(file, &real);
-	if (err)
-		return err;
+	if (fd_empty(real))
+		return fd_error(real);
 
 	if (fd_file(real)->f_op->flush) {
 		old_cred = ovl_override_creds(file_inode(file)->i_sb);
 		err = fd_file(real)->f_op->flush(fd_file(real), id);
 		revert_creds(old_cred);
 	}
-	fdput(real);
-
 	return err;
 }
 
