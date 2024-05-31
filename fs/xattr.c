@@ -700,15 +700,15 @@ SYSCALL_DEFINE5(fsetxattr, int, fd, const char __user *, name,
 	struct fd f = fdget(fd);
 	int error = -EBADF;
 
-	if (!f.file)
+	if (!fd_file(f))
 		return error;
-	audit_file(f.file);
-	error = mnt_want_write_file(f.file);
+	audit_file(fd_file(f));
+	error = mnt_want_write_file(fd_file(f));
 	if (!error) {
-		error = setxattr(file_mnt_idmap(f.file),
-				 f.file->f_path.dentry, name,
+		error = setxattr(file_mnt_idmap(fd_file(f)),
+				 fd_file(f)->f_path.dentry, name,
 				 value, size, flags);
-		mnt_drop_write_file(f.file);
+		mnt_drop_write_file(fd_file(f));
 	}
 	fdput(f);
 	return error;
@@ -811,10 +811,10 @@ SYSCALL_DEFINE4(fgetxattr, int, fd, const char __user *, name,
 	struct fd f = fdget(fd);
 	ssize_t error = -EBADF;
 
-	if (!f.file)
+	if (!fd_file(f))
 		return error;
-	audit_file(f.file);
-	error = getxattr(file_mnt_idmap(f.file), f.file->f_path.dentry,
+	audit_file(fd_file(f));
+	error = getxattr(file_mnt_idmap(fd_file(f)), fd_file(f)->f_path.dentry,
 			 name, value, size);
 	fdput(f);
 	return error;
@@ -887,10 +887,10 @@ SYSCALL_DEFINE3(flistxattr, int, fd, char __user *, list, size_t, size)
 	struct fd f = fdget(fd);
 	ssize_t error = -EBADF;
 
-	if (!f.file)
+	if (!fd_file(f))
 		return error;
-	audit_file(f.file);
-	error = listxattr(f.file->f_path.dentry, list, size);
+	audit_file(fd_file(f));
+	error = listxattr(fd_file(f)->f_path.dentry, list, size);
 	fdput(f);
 	return error;
 }
@@ -956,14 +956,14 @@ SYSCALL_DEFINE2(fremovexattr, int, fd, const char __user *, name)
 	struct fd f = fdget(fd);
 	int error = -EBADF;
 
-	if (!f.file)
+	if (!fd_file(f))
 		return error;
-	audit_file(f.file);
-	error = mnt_want_write_file(f.file);
+	audit_file(fd_file(f));
+	error = mnt_want_write_file(fd_file(f));
 	if (!error) {
-		error = removexattr(file_mnt_idmap(f.file),
-				    f.file->f_path.dentry, name);
-		mnt_drop_write_file(f.file);
+		error = removexattr(file_mnt_idmap(fd_file(f)),
+				    fd_file(f)->f_path.dentry, name);
+		mnt_drop_write_file(fd_file(f));
 	}
 	fdput(f);
 	return error;

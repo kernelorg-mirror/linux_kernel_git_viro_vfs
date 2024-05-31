@@ -193,9 +193,9 @@ int vfs_fstat(int fd, struct kstat *stat)
 	int error;
 
 	f = fdget_raw(fd);
-	if (!f.file)
+	if (!fd_file(f))
 		return -EBADF;
-	error = vfs_getattr(&f.file->f_path, stat, STATX_BASIC_STATS, 0);
+	error = vfs_getattr(&fd_file(f)->f_path, stat, STATX_BASIC_STATS, 0);
 	fdput(f);
 	return error;
 }
