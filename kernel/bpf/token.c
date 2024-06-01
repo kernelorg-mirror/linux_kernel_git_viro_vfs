@@ -117,17 +117,15 @@ int bpf_token_create(union bpf_attr *attr)
 	struct inode *inode;
 	struct file *file;
 	struct path path;
-	struct fd f;
+	CLASS(fd, f)(attr->token_create.bpffs_fd);
 	umode_t mode;
 	int err, fd;
 
-	f = fdget(attr->token_create.bpffs_fd);
-	if (!fd_file(f))
+	if (fd_empty(f))
 		return -EBADF;
 
 	path = fd_file(f)->f_path;
 	path_get(&path);
-	fdput(f);
 
 	if (path.dentry != path.mnt->mnt_sb->s_root) {
 		err = -EINVAL;
@@ -232,19 +230,16 @@ out_path:
 
 struct bpf_token *bpf_token_get_from_fd(u32 ufd)
 {
-	struct fd f = fdget(ufd);
+	CLASS(fd, f)(ufd);
 	struct bpf_token *token;
 
-	if (!fd_file(f))
+	if (fd_empty(f))
 		return ERR_PTR(-EBADF);
-	if (fd_file(f)->f_op != &bpf_token_fops) {
-		fdput(f);
+	if (fd_file(f)->f_op != &bpf_token_fops)
 		return ERR_PTR(-EINVAL);
-	}
 
 	token = fd_file(f)->private_data;
 	bpf_token_inc(token);
-	fdput(f);
 
 	return token;
 }

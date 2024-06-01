@@ -18399,7 +18399,6 @@ static int resolve_pseudo_ldimm64(struct bpf_verifier_env *env)
 		if (insn[0].code == (BPF_LD | BPF_IMM | BPF_DW)) {
 			struct bpf_insn_aux_data *aux;
 			struct bpf_map *map;
-			struct fd f;
 			u64 addr;
 			u32 fd;
 
@@ -18462,7 +18461,8 @@ static int resolve_pseudo_ldimm64(struct bpf_verifier_env *env)
 				break;
 			}
 
-			f = fdget(fd);
+			CLASS(fd, f)(fd);
+
 			map = __bpf_map_get(f);
 			if (IS_ERR(map)) {
 				verbose(env, "fd %d is not pointing to valid bpf_map\n", fd);
@@ -18470,10 +18470,8 @@ static int resolve_pseudo_ldimm64(struct bpf_verifier_env *env)
 			}
 
 			err = check_map_prog_compatibility(env, map, env->prog);
-			if (err) {
-				fdput(f);
+			if (err)
 				return err;
-			}
 
 			aux = &env->insn_aux_data[i];
 			if (insn[0].src_reg == BPF_PSEUDO_MAP_FD ||
@@ -18484,13 +18482,11 @@ static int resolve_pseudo_ldimm64(struct bpf_verifier_env *env)
 
 				if (off >= BPF_MAX_VAR_OFF) {
 					verbose(env, "direct value offset of %u is not allowed\n", off);
-					fdput(f);
 					return -EINVAL;
 				}
 
 				if (!map->ops->map_direct_value_addr) {
 					verbose(env, "no direct value access support for this map type\n");
-					fdput(f);
 					return -EINVAL;
 				}
 
@@ -18498,7 +18494,6 @@ static int resolve_pseudo_ldimm64(struct bpf_verifier_env *env)
 				if (err) {
 					verbose(env, "invalid access to map value pointer, value_size=%u off=%u\n",
 						map->value_size, off);
-					fdput(f);
 					return err;
 				}
 
@@ -18513,7 +18508,6 @@ static int resolve_pseudo_ldimm64(struct bpf_verifier_env *env)
 			for (j = 0; j < env->used_map_cnt; j++) {
 				if (env->used_maps[j] == map) {
 					aux->map_index = j;
-					fdput(f);
 					goto next_insn;
 				}
 			}
@@ -18521,7 +18515,6 @@ static int resolve_pseudo_ldimm64(struct bpf_verifier_env *env)
 			if (env->used_map_cnt >= MAX_USED_MAPS) {
 				verbose(env, "The total number of maps per program has reached the limit of %u\n",
 					MAX_USED_MAPS);
-				fdput(f);
 				return -E2BIG;
 			}
 
@@ -18540,39 +18533,32 @@ static int resolve_pseudo_ldimm64(struct bpf_verifier_env *env)
 			if (bpf_map_is_cgroup_storage(map) &&
 			    bpf_cgroup_storage_assign(env->prog->aux, map)) {
 				verbose(env, "only one cgroup storage of each type is allowed\n");
-				fdput(f);
 				return -EBUSY;
 			}
 			if (map->map_type == BPF_MAP_TYPE_ARENA) {
 				if (env->prog->aux->arena) {
 					verbose(env, "Only one arena per program\n");
-					fdput(f);
 					return -EBUSY;
 				}
 				if (!env->allow_ptr_leaks || !env->bpf_capable) {
 					verbose(env, "CAP_BPF and CAP_PERFMON are required to use arena\n");
-					fdput(f);
 					return -EPERM;
 				}
 				if (!env->prog->jit_requested) {
 					verbose(env, "JIT is required to use arena\n");
-					fdput(f);
 					return -EOPNOTSUPP;
 				}
 				if (!bpf_jit_supports_arena()) {
 					verbose(env, "JIT doesn't support arena\n");
-					fdput(f);
 					return -EOPNOTSUPP;
 				}
 				env->prog->aux->arena = (void *)map;
 				if (!bpf_arena_get_user_vm_start(env->prog->aux->arena)) {
 					verbose(env, "arena's user address must be set via map_extra or mmap()\n");
-					fdput(f);
 					return -EINVAL;
 				}
 			}
 
-			fdput(f);
 next_insn:
 			insn++;
 			i++;
