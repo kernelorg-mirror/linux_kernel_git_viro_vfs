@@ -930,7 +930,6 @@ static int privcmd_irqfd_assign(struct privcmd_irqfd *irqfd)
 {
 	struct privcmd_kernel_irqfd *kirqfd, *tmp;
 	__poll_t events;
-	struct fd f;
 	void *dm_op;
 	int ret;
 
@@ -949,8 +948,8 @@ static int privcmd_irqfd_assign(struct privcmd_irqfd *irqfd)
 	kirqfd->dom = irqfd->dom;
 	INIT_WORK(&kirqfd->shutdown, irqfd_shutdown);
 
-	f = fdget(irqfd->fd);
-	if (!fd_file(f)) {
+	CLASS(fd, f)(irqfd->fd);
+	if (fd_empty(f)) {
 		ret = -EBADF;
 		goto error_kfree;
 	}
@@ -958,7 +957,7 @@ static int privcmd_irqfd_assign(struct privcmd_irqfd *irqfd)
 	kirqfd->eventfd = eventfd_ctx_fileget(fd_file(f));
 	if (IS_ERR(kirqfd->eventfd)) {
 		ret = PTR_ERR(kirqfd->eventfd);
-		goto error_fd_put;
+		goto error_kfree;
 	}
 
 	/*
@@ -989,18 +988,10 @@ static int privcmd_irqfd_assign(struct privcmd_irqfd *irqfd)
 	if (events & EPOLLIN)
 		irqfd_inject(kirqfd);
 
-	/*
-	 * Do not drop the file until the kirqfd is fully initialized, otherwise
-	 * we might race against the EPOLLHUP.
-	 */
-	fdput(f);
 	return 0;
 
 error_eventfd:
 	eventfd_ctx_put(kirqfd->eventfd);
-
-error_fd_put:
-	fdput(f);
 
 error_kfree:
 	kfree(kirqfd);
@@ -1310,7 +1301,6 @@ static int privcmd_ioeventfd_assign(struct privcmd_ioeventfd *ioeventfd)
 	struct privcmd_kernel_ioeventfd *kioeventfd;
 	struct privcmd_kernel_ioreq *kioreq;
 	unsigned long flags;
-	struct fd f;
 	int ret;
 
 	/* Check for range overflow */
@@ -1330,14 +1320,15 @@ static int privcmd_ioeventfd_assign(struct privcmd_ioeventfd *ioeventfd)
 	if (!kioeventfd)
 		return -ENOMEM;
 
-	f = fdget(ioeventfd->event_fd);
-	if (!fd_file(f)) {
-		ret = -EBADF;
-		goto error_kfree;
-	}
+	{
+		CLASS(fd, f)(ioeventfd->event_fd);
+		if (fd_empty(f)) {
+			ret = -EBADF;
+			goto error_kfree;
+		}
 
-	kioeventfd->eventfd = eventfd_ctx_fileget(fd_file(f));
-	fdput(f);
+		kioeventfd->eventfd = eventfd_ctx_fileget(fd_file(f));
+	}
 
 	if (IS_ERR(kioeventfd->eventfd)) {
 		ret = PTR_ERR(kioeventfd->eventfd);
