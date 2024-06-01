@@ -115,10 +115,9 @@ long kvm_spapr_tce_attach_iommu_group(struct kvm *kvm, int tablefd,
 	struct iommu_table_group *table_group;
 	long i;
 	struct kvmppc_spapr_tce_iommu_table *stit;
-	struct fd f;
+	CLASS(fd, f)(tablefd);
 
-	f = fdget(tablefd);
-	if (!fd_file(f))
+	if (fd_empty(f))
 		return -EBADF;
 
 	rcu_read_lock();
@@ -129,8 +128,6 @@ long kvm_spapr_tce_attach_iommu_group(struct kvm *kvm, int tablefd,
 		}
 	}
 	rcu_read_unlock();
-
-	fdput(f);
 
 	if (!found)
 		return -EINVAL;

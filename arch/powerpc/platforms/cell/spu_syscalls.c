@@ -64,12 +64,10 @@ SYSCALL_DEFINE4(spu_create, const char __user *, name, unsigned int, flags,
 		return -ENOSYS;
 
 	if (flags & SPU_CREATE_AFFINITY_SPU) {
-		struct fd neighbor = fdget(neighbor_fd);
+		CLASS(fd, neighbor)(neighbor_fd);
 		ret = -EBADF;
-		if (fd_file(neighbor)) {
+		if (!fd_empty(neighbor))
 			ret = calls->create_thread(name, flags, mode, fd_file(neighbor));
-			fdput(neighbor);
-		}
 	} else
 		ret = calls->create_thread(name, flags, mode, NULL);
 
@@ -80,7 +78,6 @@ SYSCALL_DEFINE4(spu_create, const char __user *, name, unsigned int, flags,
 SYSCALL_DEFINE3(spu_run,int, fd, __u32 __user *, unpc, __u32 __user *, ustatus)
 {
 	long ret;
-	struct fd arg;
 	struct spufs_calls *calls;
 
 	calls = spufs_calls_get();
@@ -88,11 +85,9 @@ SYSCALL_DEFINE3(spu_run,int, fd, __u32 __user *, unpc, __u32 __user *, ustatus)
 		return -ENOSYS;
 
 	ret = -EBADF;
-	arg = fdget(fd);
-	if (fd_file(arg)) {
+	CLASS(fd, arg)(fd);
+	if (!fd_empty(arg))
 		ret = calls->spu_run(fd_file(arg), unpc, ustatus);
-		fdput(arg);
-	}
 
 	spufs_calls_put(calls);
 	return ret;
