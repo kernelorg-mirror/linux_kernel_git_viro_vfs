@@ -525,19 +525,16 @@ static noinline_for_stack int do_select(int n, fd_set_bits *fds, struct timespec
 			}
 
 			for (j = 0; j < BITS_PER_LONG; ++j, ++i, bit <<= 1) {
-				struct fd f;
 				if (i >= n)
 					break;
 				if (!(bit & all_bits))
 					continue;
 				mask = EPOLLNVAL;
-				f = fdget(i);
-				if (fd_file(f)) {
+				CLASS(fd, f)(i);
+				if (!fd_empty(f)) {
 					wait_key_set(wait, in, out, bit,
 						     busy_flag);
 					mask = vfs_poll(fd_file(f), wait);
-
-					fdput(f);
 				}
 				if ((mask & POLLIN_SET) && (in & bit)) {
 					res_in |= bit;
@@ -858,13 +855,12 @@ static inline __poll_t do_pollfd(struct pollfd *pollfd, poll_table *pwait,
 {
 	int fd = pollfd->fd;
 	__poll_t mask = 0, filter;
-	struct fd f;
 
 	if (fd < 0)
 		goto out;
 	mask = EPOLLNVAL;
-	f = fdget(fd);
-	if (!fd_file(f))
+	CLASS(fd, f)(fd);
+	if (fd_empty(f))
 		goto out;
 
 	/* userland u16 ->events contains POLL... bitmap */
@@ -874,7 +870,6 @@ static inline __poll_t do_pollfd(struct pollfd *pollfd, poll_table *pwait,
 	if (mask & busy_flag)
 		*can_busy_poll = true;
 	mask &= filter;		/* Mask out unneeded events. */
-	fdput(f);
 
 out:
 	/* ... and so does ->revents */

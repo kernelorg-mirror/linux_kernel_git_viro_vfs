@@ -697,11 +697,11 @@ SYSCALL_DEFINE5(lsetxattr, const char __user *, pathname,
 SYSCALL_DEFINE5(fsetxattr, int, fd, const char __user *, name,
 		const void __user *,value, size_t, size, int, flags)
 {
-	struct fd f = fdget(fd);
-	int error = -EBADF;
+	CLASS(fd, f)(fd);
+	int error;
 
-	if (!fd_file(f))
-		return error;
+	if (fd_empty(f))
+		return -EBADF;
 	audit_file(fd_file(f));
 	error = mnt_want_write_file(fd_file(f));
 	if (!error) {
@@ -710,7 +710,6 @@ SYSCALL_DEFINE5(fsetxattr, int, fd, const char __user *, name,
 				 value, size, flags);
 		mnt_drop_write_file(fd_file(f));
 	}
-	fdput(f);
 	return error;
 }
 
@@ -808,16 +807,13 @@ SYSCALL_DEFINE4(lgetxattr, const char __user *, pathname,
 SYSCALL_DEFINE4(fgetxattr, int, fd, const char __user *, name,
 		void __user *, value, size_t, size)
 {
-	struct fd f = fdget(fd);
-	ssize_t error = -EBADF;
+	CLASS(fd, f)(fd);
 
-	if (!fd_file(f))
-		return error;
+	if (fd_empty(f))
+		return -EBADF;
 	audit_file(fd_file(f));
-	error = getxattr(file_mnt_idmap(fd_file(f)), fd_file(f)->f_path.dentry,
+	return getxattr(file_mnt_idmap(fd_file(f)), fd_file(f)->f_path.dentry,
 			 name, value, size);
-	fdput(f);
-	return error;
 }
 
 /*
@@ -884,15 +880,12 @@ SYSCALL_DEFINE3(llistxattr, const char __user *, pathname, char __user *, list,
 
 SYSCALL_DEFINE3(flistxattr, int, fd, char __user *, list, size_t, size)
 {
-	struct fd f = fdget(fd);
-	ssize_t error = -EBADF;
+	CLASS(fd, f)(fd);
 
-	if (!fd_file(f))
-		return error;
+	if (fd_empty(f))
+		return -EBADF;
 	audit_file(fd_file(f));
-	error = listxattr(fd_file(f)->f_path.dentry, list, size);
-	fdput(f);
-	return error;
+	return listxattr(fd_file(f)->f_path.dentry, list, size);
 }
 
 /*
@@ -953,11 +946,11 @@ SYSCALL_DEFINE2(lremovexattr, const char __user *, pathname,
 
 SYSCALL_DEFINE2(fremovexattr, int, fd, const char __user *, name)
 {
-	struct fd f = fdget(fd);
-	int error = -EBADF;
+	CLASS(fd, f)(fd);
+	int error;
 
-	if (!fd_file(f))
-		return error;
+	if (fd_empty(f))
+		return -EBADF;
 	audit_file(fd_file(f));
 	error = mnt_want_write_file(fd_file(f));
 	if (!error) {
@@ -965,7 +958,6 @@ SYSCALL_DEFINE2(fremovexattr, int, fd, const char __user *, name)
 				    fd_file(f)->f_path.dentry, name);
 		mnt_drop_write_file(fd_file(f));
 	}
-	fdput(f);
 	return error;
 }
 

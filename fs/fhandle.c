@@ -125,11 +125,10 @@ static struct vfsmount *get_vfsmount_from_fd(int fd)
 		mnt = mntget(fs->pwd.mnt);
 		spin_unlock(&fs->lock);
 	} else {
-		struct fd f = fdget(fd);
-		if (!fd_file(f))
+		CLASS(fd, f)(fd);
+		if (fd_empty(f))
 			return ERR_PTR(-EBADF);
 		mnt = mntget(fd_file(f)->f_path.mnt);
-		fdput(f);
 	}
 	return mnt;
 }

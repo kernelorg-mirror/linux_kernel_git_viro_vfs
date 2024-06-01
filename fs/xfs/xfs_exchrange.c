@@ -778,8 +778,6 @@ xfs_ioc_exchange_range(
 		.file2			= file,
 	};
 	struct xfs_exchange_range	args;
-	struct fd			file1;
-	int				error;
 
 	if (copy_from_user(&args, argp, sizeof(args)))
 		return -EFAULT;
@@ -793,12 +791,10 @@ xfs_ioc_exchange_range(
 	fxr.length		= args.length;
 	fxr.flags		= args.flags;
 
-	file1 = fdget(args.file1_fd);
-	if (!fd_file(file1))
+	CLASS(fd, file1)(args.file1_fd);
+	if (fd_empty(file1))
 		return -EBADF;
 	fxr.file1 = fd_file(file1);
 
-	error = xfs_exchange_range(&fxr);
-	fdput(file1);
-	return error;
+	return xfs_exchange_range(&fxr);
 }
