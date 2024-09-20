@@ -4738,8 +4738,6 @@ static int build_mount_kattr(const struct mount_attr *attr, size_t usize,
 		lookup_flags &= ~LOOKUP_AUTOMOUNT;
 	if (flags & AT_SYMLINK_NOFOLLOW)
 		lookup_flags &= ~LOOKUP_FOLLOW;
-	if (flags & AT_EMPTY_PATH)
-		lookup_flags |= LOOKUP_EMPTY;
 
 	*kattr = (struct mount_kattr) {
 		.lookup_flags	= lookup_flags,
@@ -4813,6 +4811,7 @@ SYSCALL_DEFINE5(mount_setattr, int, dfd, const char __user *, path,
 	struct path target;
 	struct mount_attr attr;
 	struct mount_kattr kattr;
+	struct filename *name;
 
 	BUILD_BUG_ON(sizeof(struct mount_attr) != MOUNT_ATTR_SIZE_VER0);
 
@@ -4844,11 +4843,13 @@ SYSCALL_DEFINE5(mount_setattr, int, dfd, const char __user *, path,
 	if (err)
 		return err;
 
-	err = user_path_at(dfd, path, kattr.lookup_flags, &target);
+	name = getname_uflags(path, flags);
+	err = filename_lookup(dfd, name, kattr.lookup_flags, &target, NULL);
 	if (!err) {
 		err = do_mount_setattr(&target, &kattr);
 		path_put(&target);
 	}
+	putname(name);
 	finish_mount_kattr(&kattr);
 	return err;
 }
