@@ -107,6 +107,7 @@ SYSCALL_DEFINE5(name_to_handle_at, int, dfd, const char __user *, name,
 		struct file_handle __user *, handle, void __user *, mnt_id,
 		int, flag)
 {
+	struct filename *filename;
 	struct path path;
 	int lookup_flags;
 	int fh_flags;
@@ -118,15 +119,15 @@ SYSCALL_DEFINE5(name_to_handle_at, int, dfd, const char __user *, name,
 
 	lookup_flags = (flag & AT_SYMLINK_FOLLOW) ? LOOKUP_FOLLOW : 0;
 	fh_flags = (flag & AT_HANDLE_FID) ? EXPORT_FH_FID : 0;
-	if (flag & AT_EMPTY_PATH)
-		lookup_flags |= LOOKUP_EMPTY;
-	err = user_path_at(dfd, name, lookup_flags, &path);
+	filename = getname_uflags(name, flag);
+	err = filename_lookup(dfd, filename, lookup_flags, &path, NULL);
 	if (!err) {
 		err = do_sys_name_to_handle(&path, handle, mnt_id,
 					    flag & AT_HANDLE_MNT_ID_UNIQUE,
 					    fh_flags);
 		path_put(&path);
 	}
+	putname(filename);
 	return err;
 }
 
