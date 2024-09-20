@@ -516,8 +516,8 @@ static int do_readlinkat(int dfd, const char __user *pathname,
 	if (bufsiz <= 0)
 		return -EINVAL;
 
-retry:
 	name = getname_flags(pathname, LOOKUP_EMPTY);
+retry:
 	error = filename_lookup(dfd, name, lookup_flags, &path, NULL);
 	if (unlikely(error)) {
 		putname(name);
@@ -538,11 +538,11 @@ retry:
 		error = (name->name[0] == '\0') ? -ENOENT : -EINVAL;
 	}
 	path_put(&path);
-	putname(name);
 	if (retry_estale(error, lookup_flags)) {
 		lookup_flags |= LOOKUP_REVAL;
 		goto retry;
 	}
+	putname(name);
 	return error;
 }
 
