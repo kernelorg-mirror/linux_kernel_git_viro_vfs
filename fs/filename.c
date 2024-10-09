@@ -14,11 +14,12 @@
  * PATH_MAX includes the nul terminator --RR.
  */
 
-#define EMBEDDED_NAME_MAX	(PATH_MAX - offsetof(struct filename, iname))
+#define EMBEDDED_NAME_MAX	(PATH_MAX - offsetof(struct __filename, iname))
 
 struct filename *
 getname_flags(const char __user *filename, int flags)
 {
+	struct __filename *full;
 	struct filename *result;
 	char *kname;
 	int len;
@@ -27,15 +28,16 @@ getname_flags(const char __user *filename, int flags)
 	if (result)
 		return result;
 
-	result = __getname();
-	if (unlikely(!result))
+	full = __getname();
+	if (unlikely(!full))
 		return ERR_PTR(-ENOMEM);
 
+	result = &full->public;
 	/*
 	 * First, try to embed the struct filename inside the names_cache
 	 * allocation
 	 */
-	kname = (char *)result->iname;
+	kname = (char *)full->iname;
 	result->name = kname;
 
 	len = strncpy_from_user(kname, filename, EMBEDDED_NAME_MAX);
@@ -44,13 +46,13 @@ getname_flags(const char __user *filename, int flags)
 	 */
 	if (unlikely(len <= 0)) {
 		if (unlikely(len < 0)) {
-			__putname(result);
+			__putname(full);
 			return ERR_PTR(len);
 		}
 
 		/* The empty path is special. */
 		if (!(flags & LOOKUP_EMPTY)) {
-			__putname(result);
+			__putname(full);
 			return ERR_PTR(-ENOENT);
 		}
 	}
@@ -62,42 +64,43 @@ getname_flags(const char __user *filename, int flags)
 	 * userland.
 	 */
 	if (unlikely(len == EMBEDDED_NAME_MAX)) {
-		const size_t size = offsetof(struct filename, iname[1]);
-		kname = (char *)result;
+		const size_t size = offsetof(struct __filename, iname[1]);
+		kname = (char *)full;
 
 		/*
 		 * size is chosen that way we to guarantee that
 		 * result->iname[0] is within the same object and that
 		 * kname can't be equal to result->iname, no matter what.
 		 */
-		result = kzalloc(size, GFP_KERNEL);
-		if (unlikely(!result)) {
+		full = kzalloc(size, GFP_KERNEL);
+		if (unlikely(!full)) {
 			__putname(kname);
 			return ERR_PTR(-ENOMEM);
 		}
+		result = &full->public;
 		result->name = kname;
 		len = strncpy_from_user(kname, filename, PATH_MAX);
 		if (unlikely(len < 0)) {
 			__putname(kname);
-			kfree(result);
+			kfree(full);
 			return ERR_PTR(len);
 		}
 		/* The empty path is special. */
 		if (unlikely(!len) && !(flags & LOOKUP_EMPTY)) {
 			__putname(kname);
-			kfree(result);
+			kfree(full);
 			return ERR_PTR(-ENOENT);
 		}
 		if (unlikely(len == PATH_MAX)) {
 			__putname(kname);
-			kfree(result);
+			kfree(full);
 			return ERR_PTR(-ENAMETOOLONG);
 		}
 	}
 
-	atomic_set(&result->refcnt, 1);
-	result->uptr = filename;
-	result->aname = NULL;
+	atomic_set(&full->refcnt, 1);
+	full->uptr = filename;
+	full->aname = NULL;
 	audit_getname(result);
 	return result;
 }
@@ -135,34 +138,37 @@ struct filename *__getname_maybe_null(const char __user *pathname)
 
 struct filename *getname_kernel(const char * filename)
 {
+	struct __filename *full;
 	struct filename *result;
 	int len = strlen(filename) + 1;
 
-	result = __getname();
-	if (unlikely(!result))
+	full = __getname();
+	if (unlikely(!full))
 		return ERR_PTR(-ENOMEM);
 
+	result = &full->public;
 	if (len <= EMBEDDED_NAME_MAX) {
-		result->name = (char *)result->iname;
+		result->name = (char *)full->iname;
 	} else if (len <= PATH_MAX) {
-		const size_t size = offsetof(struct filename, iname[1]);
-		struct filename *tmp;
+		const size_t size = offsetof(struct __filename, iname[1]);
+		struct __filename *tmp;
 
 		tmp = kmalloc(size, GFP_KERNEL);
 		if (unlikely(!tmp)) {
-			__putname(result);
+			__putname(full);
 			return ERR_PTR(-ENOMEM);
 		}
-		tmp->name = (char *)result;
-		result = tmp;
+		tmp->public.name = (char *)full;
+		full = tmp;
+		result = &full->public;
 	} else {
-		__putname(result);
+		__putname(full);
 		return ERR_PTR(-ENAMETOOLONG);
 	}
 	memcpy((char *)result->name, filename, len);
-	result->uptr = NULL;
-	result->aname = NULL;
-	atomic_set(&result->refcnt, 1);
+	full->uptr = NULL;
+	full->aname = NULL;
+	atomic_set(&full->refcnt, 1);
 	audit_getname(result);
 
 	return result;
@@ -171,19 +177,22 @@ EXPORT_SYMBOL(getname_kernel);
 
 void putname(struct filename *name)
 {
+	struct __filename *full;
+
 	if (IS_ERR_OR_NULL(name))
 		return;
 
-	if (WARN_ON_ONCE(!atomic_read(&name->refcnt)))
+	full = __filename_full(name);
+	if (WARN_ON_ONCE(!atomic_read(&full->refcnt)))
 		return;
 
-	if (!atomic_dec_and_test(&name->refcnt))
+	if (!atomic_dec_and_test(&full->refcnt))
 		return;
 
-	if (name->name != name->iname) {
+	if (name->name != full->iname) {
 		__putname(name->name);
-		kfree(name);
+		kfree(full);
 	} else
-		__putname(name);
+		__putname(full);
 }
 EXPORT_SYMBOL(putname);

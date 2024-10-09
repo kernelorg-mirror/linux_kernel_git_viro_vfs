@@ -2210,10 +2210,12 @@ __audit_reusename(const __user char *uptr)
 	struct audit_names *n;
 
 	list_for_each_entry(n, &context->names_list, list) {
+		struct __filename *name;
 		if (!n->name)
 			continue;
-		if (n->name->uptr == uptr) {
-			atomic_inc(&n->name->refcnt);
+		name = __filename_full(n->name);
+		if (name->uptr == uptr) {
+			atomic_inc(&name->refcnt);
 			return n->name;
 		}
 	}
@@ -2229,6 +2231,7 @@ __audit_reusename(const __user char *uptr)
  */
 void __audit_getname(struct filename *name)
 {
+	struct __filename *full = __filename_full(name);
 	struct audit_context *context = audit_context();
 	struct audit_names *n;
 
@@ -2241,8 +2244,8 @@ void __audit_getname(struct filename *name)
 
 	n->name = name;
 	n->name_len = AUDIT_NAME_FULL;
-	name->aname = n;
-	atomic_inc(&name->refcnt);
+	full->aname = n;
+	atomic_inc(&full->refcnt);
 }
 
 static inline int audit_copy_fcaps(struct audit_names *name,
@@ -2330,7 +2333,7 @@ void __audit_inode(struct filename *name, const struct dentry *dentry,
 	 * If we have a pointer to an audit_names entry already, then we can
 	 * just use it directly if the type is correct.
 	 */
-	n = name->aname;
+	n = __filename_full(name)->aname;
 	if (n) {
 		if (parent) {
 			if (n->type == AUDIT_TYPE_PARENT ||
@@ -2373,8 +2376,9 @@ out_alloc:
 	if (!n)
 		return;
 	if (name) {
+		struct __filename *full = __filename_full(name);
 		n->name = name;
-		atomic_inc(&name->refcnt);
+		atomic_inc(&full->refcnt);
 	}
 
 out:
@@ -2501,7 +2505,7 @@ void __audit_inode_child(struct inode *parent,
 		if (found_parent) {
 			found_child->name = found_parent->name;
 			found_child->name_len = AUDIT_NAME_FULL;
-			atomic_inc(&found_child->name->refcnt);
+			atomic_inc(&__filename_full(found_child->name)->refcnt);
 		}
 	}
 
