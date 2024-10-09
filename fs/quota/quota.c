@@ -21,6 +21,7 @@
 #include <linux/mount.h>
 #include <linux/writeback.h>
 #include <linux/nospec.h>
+#include <linux/filename.h>
 #include "compat.h"
 #include "../internal.h"
 

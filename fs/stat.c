@@ -19,6 +19,7 @@
 #include <linux/pagemap.h>
 #include <linux/compat.h>
 #include <linux/iversion.h>
+#include <linux/filename.h>
 
 #include <linux/uaccess.h>
 #include <asm/unistd.h>

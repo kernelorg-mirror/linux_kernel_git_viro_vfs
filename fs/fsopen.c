@@ -14,6 +14,7 @@
 #include <linux/anon_inodes.h>
 #include <linux/namei.h>
 #include <linux/file.h>
+#include <linux/filename.h>
 #include <uapi/linux/mount.h>
 #include "internal.h"
 #include "mount.h"

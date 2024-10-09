@@ -17,6 +17,7 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/fs_parser.h>
+#include <linux/filename.h>
 
 /*
  * Handling of filesystem drivers list.

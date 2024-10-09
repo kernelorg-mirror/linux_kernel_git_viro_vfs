@@ -2681,15 +2681,7 @@ extern struct kobject *fs_kobj;
 #define MAX_RW_COUNT (INT_MAX & PAGE_MASK)
 
 /* fs/open.c */
-struct audit_names;
-struct filename {
-	const char		*name;	/* pointer to actual string */
-	const __user char	*uptr;	/* original userland pointer */
-	atomic_t		refcnt;
-	struct audit_names	*aname;
-	const char		iname[];
-};
-static_assert(offsetof(struct filename, iname) % sizeof(long) == 0);
+struct filename;
 
 static inline struct mnt_idmap *file_mnt_idmap(const struct file *file)
 {

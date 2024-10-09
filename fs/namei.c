@@ -40,6 +40,7 @@
 #include <linux/bitops.h>
 #include <linux/init_task.h>
 #include <linux/uaccess.h>
+#include <linux/filename.h>
 
 #include "internal.h"
 #include "mount.h"

@@ -41,6 +41,7 @@
 #include <linux/vfs.h>
 #include <linux/rcupdate.h>
 #include <linux/slab.h>
+#include <linux/filename.h>
 
 #include <asm/fpu.h>
 #include <asm/io.h>

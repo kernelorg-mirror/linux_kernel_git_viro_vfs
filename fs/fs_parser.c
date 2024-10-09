@@ -11,6 +11,7 @@
 #include <linux/slab.h>
 #include <linux/security.h>
 #include <linux/namei.h>
+#include <linux/filename.h>
 #include "internal.h"
 
 static const struct constant_table bool_names[] = {

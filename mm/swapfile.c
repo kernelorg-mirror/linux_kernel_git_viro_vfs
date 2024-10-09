@@ -43,6 +43,7 @@
 #include <linux/suspend.h>
 #include <linux/zswap.h>
 #include <linux/plist.h>
+#include <linux/filename.h>
 
 #include <asm/tlbflush.h>
 #include <linux/swapops.h>

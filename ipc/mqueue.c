@@ -35,6 +35,7 @@
 #include <linux/pid.h>
 #include <linux/ipc_namespace.h>
 #include <linux/user_namespace.h>
+#include <linux/filename.h>
 #include <linux/slab.h>
 #include <linux/sched/wake_q.h>
 #include <linux/sched/signal.h>
