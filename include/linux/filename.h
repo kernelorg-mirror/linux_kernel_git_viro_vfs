@@ -12,7 +12,6 @@ struct filename {
 
 struct __filename {
 	struct filename		public;
-	const __user char	*uptr;	/* original userland pointer */
 	atomic_t		refcnt;
 	struct audit_names	*aname;
 	const char		iname[];

@@ -24,10 +24,6 @@ getname_flags(const char __user *filename, int flags)
 	char *kname;
 	int len;
 
-	result = audit_reusename(filename);
-	if (result)
-		return result;
-
 	full = __getname();
 	if (unlikely(!full))
 		return ERR_PTR(-ENOMEM);
@@ -99,7 +95,6 @@ getname_flags(const char __user *filename, int flags)
 	}
 
 	atomic_set(&full->refcnt, 1);
-	full->uptr = filename;
 	full->aname = NULL;
 	audit_getname(result);
 	return result;
@@ -166,7 +161,6 @@ struct filename *getname_kernel(const char * filename)
 		return ERR_PTR(-ENAMETOOLONG);
 	}
 	memcpy((char *)result->name, filename, len);
-	full->uptr = NULL;
 	full->aname = NULL;
 	atomic_set(&full->refcnt, 1);
 	audit_getname(result);
