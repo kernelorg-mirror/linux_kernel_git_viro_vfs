@@ -328,7 +328,7 @@ int vfs_fstatat(int dfd, const char __user *filename,
 	int statx_flags = flags | AT_NO_AUTOMOUNT;
 	struct filename *name = getname_maybe_null(filename, flags);
 
-	if (!name)
+	if (!name && dfd >= 0)
 		return vfs_fstat(dfd, stat);
 
 	ret = vfs_statx(dfd, name, statx_flags, stat, STATX_BASIC_STATS);
@@ -769,7 +769,7 @@ SYSCALL_DEFINE5(statx,
 	int ret;
 	struct filename *name = getname_maybe_null(filename, flags);
 
-	if (!name)
+	if (!name && dfd >= 0)
 		return do_statx_fd(dfd, flags & ~AT_NO_AUTOMOUNT, mask, buffer);
 
 	ret = do_statx(dfd, name, flags, mask, buffer);
