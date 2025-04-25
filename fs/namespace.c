@@ -2686,7 +2686,7 @@ static int attach_recursive_mnt(struct mount *source_mnt,
 	}
 
 	if (moving) {
-		unhash_mnt(source_mnt);
+		umount_mnt(source_mnt);
 		if (beneath)
 			mnt_set_mountpoint_beneath(source_mnt, top_mnt, smp);
 		else
@@ -3596,7 +3596,7 @@ static int do_move_mount(struct path *old_path,
 	struct mount *p;
 	struct mount *old;
 	struct mount *parent;
-	struct mountpoint *mp, *old_mp;
+	struct mountpoint *mp;
 	int err;
 	bool attached, beneath = flags & MNT_TREE_BENEATH;
 
@@ -3610,7 +3610,6 @@ static int do_move_mount(struct path *old_path,
 	attached = mnt_has_parent(old);
 	if (attached)
 		flags |= MNT_TREE_MOVE;
-	old_mp = old->mnt_mp;
 	ns = old->mnt_ns;
 
 	err = -EINVAL;
@@ -3685,8 +3684,6 @@ static int do_move_mount(struct path *old_path,
 	/* if the mount is moved, it should no longer be expire
 	 * automatically */
 	list_del_init(&old->mnt_expire);
-	if (attached)
-		put_mountpoint(old_mp);
 out:
 	unlock_mount(mp);
 	if (!err) {
