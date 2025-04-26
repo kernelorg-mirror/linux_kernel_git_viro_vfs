@@ -2675,9 +2675,14 @@ static int attach_recursive_mnt(struct mount *source_mnt,
 	}
 
 	mnt_set_mountpoint(dest_mnt, dest_mp, source_mnt);
-	if (beneath)
-		mnt_change_mountpoint(source_mnt, smp, top_mnt);
-	commit_tree(source_mnt);
+	/*
+	 * Now the original copy is in the same state as the secondaries -
+	 * its root attached to mountpoint, but not hashed and all mounts
+	 * in it are either in our namespace or in no namespace at all.
+	 * Add the original to the list of copies and deal with the
+	 * rest of work for all of them uniformly.
+	 */
+	hlist_add_head(&source_mnt->mnt_hash, &tree_list);
 
 	hlist_for_each_entry_safe(child, n, &tree_list, mnt_hash) {
 		struct mount *q;
