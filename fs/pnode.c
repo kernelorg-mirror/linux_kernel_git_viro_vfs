@@ -214,25 +214,28 @@ static struct mount *next_group(struct mount *m, struct mount *origin)
 	}
 }
 
-/* all accesses are serialized by namespace_sem */
-static struct mount *last_dest, *first_source, *last_source;
-static struct hlist_head *list;
+struct propagate_mnt_context {
+	struct mountpoint *dest_mp;
+	struct hlist_head *list;
+	struct mount *last_dest, *source, *last_source;
+};
 
-static int propagate_one(struct mount *m, struct mountpoint *dest_mp)
+static int propagate_one(struct mount *m, struct propagate_mnt_context *ctx)
 {
-	struct mount *child;
+	struct mount *last_source = ctx->last_source;
+	struct mount *copy;
 	int type;
 	/* skip ones added by this propagate_mnt() */
 	if (IS_MNT_NEW(m))
 		return 0;
 	/* skip if mountpoint isn't visible in m */
-	if (!is_subdir(dest_mp->m_dentry, m->mnt.mnt_root))
+	if (!is_subdir(ctx->dest_mp->m_dentry, m->mnt.mnt_root))
 		return 0;
 	/* skip if m is in the anon_ns */
 	if (is_anon_ns(m->mnt_ns))
 		return 0;
 
-	if (peers(m, last_dest)) {
+	if (peers(m, ctx->last_dest)) {
 		type = CL_MAKE_SHARED;
 	} else {
 		struct mount *n, *p;
@@ -244,7 +247,7 @@ static int propagate_one(struct mount *m, struct mountpoint *dest_mp)
 		}
 		do {
 			struct mount *parent = last_source->mnt_parent;
-			if (peers(last_source, first_source))
+			if (peers(last_source, ctx->source))
 				break;
 			done = parent->mnt_master == p;
 			if (done && peers(n, parent))
@@ -258,18 +261,18 @@ static int propagate_one(struct mount *m, struct mountpoint *dest_mp)
 			type |= CL_MAKE_SHARED;
 	}
 		
-	child = copy_tree(last_source, last_source->mnt.mnt_root, type);
-	if (IS_ERR(child))
-		return PTR_ERR(child);
+	copy = copy_tree(last_source, last_source->mnt.mnt_root, type);
+	if (IS_ERR(copy))
+		return PTR_ERR(copy);
 	read_seqlock_excl(&mount_lock);
-	mnt_set_mountpoint(m, dest_mp, child);
+	mnt_set_mountpoint(m, ctx->dest_mp, copy);
 	read_sequnlock_excl(&mount_lock);
 	if (m->mnt_master)
 		SET_MNT_MARK(m->mnt_master);
-	last_dest = m;
-	last_source = child;
-	hlist_add_head(&child->mnt_hash, list);
-	return count_mounts(m->mnt_ns, child);
+	ctx->last_dest = m;
+	ctx->last_source = copy;
+	hlist_add_head(&copy->mnt_hash, ctx->list);
+	return count_mounts(m->mnt_ns, copy);
 }
 
 /*
@@ -277,35 +280,33 @@ static int propagate_one(struct mount *m, struct mountpoint *dest_mp)
  * dentry 'dest_dentry'. And propagate that mount to
  * all the peer and slave mounts of 'dest_mnt'.
  * Link all the new mounts into a propagation tree headed at
- * source_mnt. Also link all the new mounts using ->mnt_list
- * headed at source_mnt's ->mnt_list
+ * source_mnt.  Roots of all copies placed into 'tree_list',
+ * linked by ->mnt_hash.
  *
  * @dest_mnt: destination mount.
  * @dest_dentry: destination dentry.
  * @source_mnt: source mount.
- * @tree_list : list of heads of trees to be attached.
+ * @tree_list : list of trees to be attached.
  */
 int propagate_mnt(struct mount *dest_mnt, struct mountpoint *dest_mp,
 		    struct mount *source_mnt, struct hlist_head *tree_list)
 {
 	struct mount *m, *n;
 	int ret = 0;
+	struct propagate_mnt_context ctx = {
+		.source = source_mnt,
+		.dest_mp = dest_mp,
+		.list = tree_list,
+		.last_source = source_mnt,
+		.last_dest = dest_mnt,
+	};
 
-	/*
-	 * we don't want to bother passing tons of arguments to
-	 * propagate_one(); everything is serialized by namespace_sem,
-	 * so globals will do just fine.
-	 */
-	last_dest = dest_mnt;
-	first_source = source_mnt;
-	last_source = source_mnt;
-	list = tree_list;
 	if (dest_mnt->mnt_master)
 		SET_MNT_MARK(dest_mnt->mnt_master);
 
 	/* all peers of dest_mnt, except dest_mnt itself */
 	for (n = next_peer(dest_mnt); n != dest_mnt; n = next_peer(n)) {
-		ret = propagate_one(n, dest_mp);
+		ret = propagate_one(n, &ctx);
 		if (ret)
 			goto out;
 	}
@@ -316,7 +317,7 @@ int propagate_mnt(struct mount *dest_mnt, struct mountpoint *dest_mp,
 		/* everything in that slave group */
 		n = m;
 		do {
-			ret = propagate_one(n, dest_mp);
+			ret = propagate_one(n, &ctx);
 			if (ret)
 				goto out;
 			n = next_peer(n);
