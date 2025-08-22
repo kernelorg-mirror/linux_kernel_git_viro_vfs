@@ -3803,8 +3803,7 @@ int finish_automount(struct vfsmount *m, const struct path *path)
 
 	mnt = real_mount(m);
 
-	if (m->mnt_sb == path->mnt->mnt_sb &&
-	    m->mnt_root == dentry) {
+	if (m->mnt_root == path->dentry) {
 		err = -ELOOP;
 		goto discard;
 	}
