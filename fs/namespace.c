@@ -3694,7 +3694,6 @@ static bool mount_too_revealing(const struct super_block *sb, int *new_mnt_flags
 static int do_new_mount_fc(struct fs_context *fc, struct path *mountpoint,
 			   unsigned int mnt_flags)
 {
-	struct vfsmount *mnt;
 	struct pinned_mountpoint mp = {};
 	struct super_block *sb = fc->root->d_sb;
 	int error;
@@ -3710,7 +3709,7 @@ static int do_new_mount_fc(struct fs_context *fc, struct path *mountpoint,
 
 	up_write(&sb->s_umount);
 
-	mnt = vfs_create_mount(fc);
+	struct vfsmount *mnt __free(mntput) = vfs_create_mount(fc);
 	if (IS_ERR(mnt))
 		return PTR_ERR(mnt);
 
@@ -3720,10 +3719,10 @@ static int do_new_mount_fc(struct fs_context *fc, struct path *mountpoint,
 	if (!error) {
 		error = do_add_mount(real_mount(mnt), mp.mp,
 				     mountpoint, mnt_flags);
+		if (!error)
+			retain_and_null_ptr(mnt); // consumed on success
 		unlock_mount(&mp);
 	}
-	if (error < 0)
-		mntput(mnt);
 	return error;
 }
 
