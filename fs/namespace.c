@@ -509,20 +509,20 @@ int mnt_get_write_access(struct vfsmount *m)
 	mnt_inc_writers(mnt);
 	/*
 	 * The store to mnt_inc_writers must be visible before we pass
-	 * MNT_WRITE_HOLD loop below, so that the slowpath can see our
-	 * incremented count after it has set MNT_WRITE_HOLD.
+	 * WRITE_HOLD loop below, so that the slowpath can see our
+	 * incremented count after it has set WRITE_HOLD.
 	 */
 	smp_mb();
 	might_lock(&mount_lock.lock);
-	while (READ_ONCE(mnt->mnt.mnt_flags) & MNT_WRITE_HOLD) {
+	while (READ_ONCE(mnt->mnt_pprev_for_sb) & WRITE_HOLD) {
 		if (!IS_ENABLED(CONFIG_PREEMPT_RT)) {
 			cpu_relax();
 		} else {
 			/*
 			 * This prevents priority inversion, if the task
-			 * setting MNT_WRITE_HOLD got preempted on a remote
+			 * setting WRITE_HOLD got preempted on a remote
 			 * CPU, and it prevents life lock if the task setting
-			 * MNT_WRITE_HOLD has a lower priority and is bound to
+			 * WRITE_HOLD has a lower priority and is bound to
 			 * the same CPU as the task that is spinning here.
 			 */
 			preempt_enable();
@@ -533,7 +533,7 @@ int mnt_get_write_access(struct vfsmount *m)
 	}
 	/*
 	 * The barrier pairs with the barrier sb_start_ro_state_change() making
-	 * sure that if we see MNT_WRITE_HOLD cleared, we will also see
+	 * sure that if we see WRITE_HOLD cleared, we will also see
 	 * s_readonly_remount set (or even SB_RDONLY / MNT_READONLY flags) in
 	 * mnt_is_readonly() and bail in case we are racing with remount
 	 * read-only.
@@ -672,15 +672,15 @@ EXPORT_SYMBOL(mnt_drop_write_file);
  * @mnt.
  *
  * Context: This function expects lock_mount_hash() to be held serializing
- *          setting MNT_WRITE_HOLD.
+ *          setting WRITE_HOLD.
  * Return: On success 0 is returned.
  *	   On error, -EBUSY is returned.
  */
 static inline int mnt_hold_writers(struct mount *mnt)
 {
-	mnt->mnt.mnt_flags |= MNT_WRITE_HOLD;
+	mnt->mnt_pprev_for_sb |= WRITE_HOLD;
 	/*
-	 * After storing MNT_WRITE_HOLD, we'll read the counters. This store
+	 * After storing WRITE_HOLD, we'll read the counters. This store
 	 * should be visible before we do.
 	 */
 	smp_mb();
@@ -696,9 +696,9 @@ static inline int mnt_hold_writers(struct mount *mnt)
 	 * sum up each counter, if we read a counter before it is incremented,
 	 * but then read another CPU's count which it has been subsequently
 	 * decremented from -- we would see more decrements than we should.
-	 * MNT_WRITE_HOLD protects against this scenario, because
+	 * WRITE_HOLD protects against this scenario, because
 	 * mnt_want_write first increments count, then smp_mb, then spins on
-	 * MNT_WRITE_HOLD, so it can't be decremented by another CPU while
+	 * WRITE_HOLD, so it can't be decremented by another CPU while
 	 * we're counting up here.
 	 */
 	if (mnt_get_writers(mnt) > 0)
@@ -722,20 +722,20 @@ static inline int mnt_hold_writers(struct mount *mnt)
 static inline void mnt_unhold_writers(struct mount *mnt)
 {
 	/*
-	 * MNT_READONLY must become visible before ~MNT_WRITE_HOLD, so writers
+	 * MNT_READONLY must become visible before ~WRITE_HOLD, so writers
 	 * that become unheld will see MNT_READONLY.
 	 */
 	smp_wmb();
-	mnt->mnt.mnt_flags &= ~MNT_WRITE_HOLD;
+	mnt->mnt_pprev_for_sb &= ~WRITE_HOLD;
 }
 
 static inline void mnt_del_instance(struct mount *m)
 {
-	struct mount **p = m->mnt_pprev_for_sb;
+	struct mount **p = (void *)m->mnt_pprev_for_sb;
 	struct mount *next = m->mnt_next_for_sb;
 
 	if (next)
-		next->mnt_pprev_for_sb = p;
+		next->mnt_pprev_for_sb = (unsigned long)p;
 	*p = next;
 }
 
@@ -744,9 +744,9 @@ static inline void mnt_add_instance(struct mount *m, struct super_block *s)
 	struct mount *first = s->s_mounts;
 
 	if (first)
-		first->mnt_pprev_for_sb = &m->mnt_next_for_sb;
+		first->mnt_pprev_for_sb = (unsigned long)&m->mnt_next_for_sb;
 	m->mnt_next_for_sb = first;
-	m->mnt_pprev_for_sb = &s->s_mounts;
+	m->mnt_pprev_for_sb = (unsigned long)&s->s_mounts;
 	s->s_mounts = m;
 }
 
@@ -765,7 +765,7 @@ int sb_prepare_remount_readonly(struct super_block *sb)
 {
 	int err = 0;
 
-	/* Racy optimization.  Recheck the counter under MNT_WRITE_HOLD */
+	/* Racy optimization.  Recheck the counter under WRITE_HOLD */
 	if (atomic_long_read(&sb->s_remove_count))
 		return -EBUSY;
 
@@ -783,8 +783,8 @@ int sb_prepare_remount_readonly(struct super_block *sb)
 	if (!err)
 		sb_start_ro_state_change(sb);
 	for (struct mount *m = sb->s_mounts; m; m = m->mnt_next_for_sb) {
-		if (m->mnt.mnt_flags & MNT_WRITE_HOLD)
-			m->mnt.mnt_flags &= ~MNT_WRITE_HOLD;
+		if (m->mnt_pprev_for_sb & WRITE_HOLD)
+			m->mnt_pprev_for_sb &= ~WRITE_HOLD;
 	}
 	unlock_mount_hash();
 
@@ -4805,18 +4805,18 @@ static int mount_setattr_prepare(struct mount_kattr *kattr, struct mount *mnt)
 		struct mount *p;
 
 		/*
-		 * If we had to call mnt_hold_writers() MNT_WRITE_HOLD will
-		 * be set in @mnt_flags. The loop unsets MNT_WRITE_HOLD for all
+		 * If we had to call mnt_hold_writers() WRITE_HOLD will
+		 * be set in @mnt_flags. The loop unsets WRITE_HOLD for all
 		 * mounts and needs to take care to include the first mount.
 		 */
 		for (p = mnt; p; p = next_mnt(p, mnt)) {
 			/* If we had to hold writers unblock them. */
-			if (p->mnt.mnt_flags & MNT_WRITE_HOLD)
+			if (p->mnt_pprev_for_sb & WRITE_HOLD)
 				mnt_unhold_writers(p);
 
 			/*
 			 * We're done once the first mount we changed got
-			 * MNT_WRITE_HOLD unset.
+			 * WRITE_HOLD unset.
 			 */
 			if (p == m)
 				break;
@@ -4851,7 +4851,7 @@ static void mount_setattr_commit(struct mount_kattr *kattr, struct mount *mnt)
 		WRITE_ONCE(m->mnt.mnt_flags, flags);
 
 		/* If we had to hold writers unblock them. */
-		if (m->mnt.mnt_flags & MNT_WRITE_HOLD)
+		if (mnt->mnt_pprev_for_sb & WRITE_HOLD)
 			mnt_unhold_writers(m);
 
 		if (kattr->propagation)

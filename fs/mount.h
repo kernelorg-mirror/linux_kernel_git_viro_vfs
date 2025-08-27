@@ -65,7 +65,8 @@ struct mount {
 	struct list_head mnt_mounts;	/* list of children, anchored here */
 	struct list_head mnt_child;	/* and going through their mnt_child */
 	struct mount *mnt_next_for_sb;	/* the next two fields are hlist_node, */
-	struct mount **mnt_pprev_for_sb;/* except that LSB of pprev will be stolen */
+	unsigned long mnt_pprev_for_sb;	/* except that LSB of pprev is stolen */
+#define WRITE_HOLD 1			/* ... for use by mnt_hold_writers() */
 	const char *mnt_devname;	/* Name of device e.g. /dev/dsk/hda1 */
 	struct list_head mnt_list;
 	struct list_head mnt_expire;	/* link in fs-specific expiry list */
