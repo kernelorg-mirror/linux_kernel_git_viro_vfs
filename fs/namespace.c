@@ -714,13 +714,14 @@ static inline int mnt_hold_writers(struct mount *mnt)
  * Stop preventing write access to @mnt allowing callers to gain write access
  * to @mnt again.
  *
- * This function can only be called after a successful call to
- * mnt_hold_writers().
+ * This function can only be called after a call to mnt_hold_writers().
  *
  * Context: This function expects lock_mount_hash() to be held.
  */
 static inline void mnt_unhold_writers(struct mount *mnt)
 {
+	if (!(mnt->mnt_pprev_for_sb & WRITE_HOLD))
+		return;
 	/*
 	 * MNT_READONLY must become visible before ~WRITE_HOLD, so writers
 	 * that become unheld will see MNT_READONLY.
@@ -4793,8 +4794,10 @@ static int mount_setattr_prepare(struct mount_kattr *kattr, struct mount *mnt)
 
 		if (!mnt_allow_writers(kattr, m)) {
 			err = mnt_hold_writers(m);
-			if (err)
+			if (err) {
+				m = next_mnt(m, mnt);
 				break;
+			}
 		}
 
 		if (!(kattr->kflags & MOUNT_KATTR_RECURSE))
@@ -4802,25 +4805,9 @@ static int mount_setattr_prepare(struct mount_kattr *kattr, struct mount *mnt)
 	}
 
 	if (err) {
-		struct mount *p;
-
-		/*
-		 * If we had to call mnt_hold_writers() WRITE_HOLD will
-		 * be set in @mnt_flags. The loop unsets WRITE_HOLD for all
-		 * mounts and needs to take care to include the first mount.
-		 */
-		for (p = mnt; p; p = next_mnt(p, mnt)) {
-			/* If we had to hold writers unblock them. */
-			if (p->mnt_pprev_for_sb & WRITE_HOLD)
-				mnt_unhold_writers(p);
-
-			/*
-			 * We're done once the first mount we changed got
-			 * WRITE_HOLD unset.
-			 */
-			if (p == m)
-				break;
-		}
+		/* undo all mnt_hold_writers() we'd done */
+		for (struct mount *p = mnt; p != m; p = next_mnt(p, mnt))
+			mnt_unhold_writers(p);
 	}
 	return err;
 }
@@ -4851,8 +4838,7 @@ static void mount_setattr_commit(struct mount_kattr *kattr, struct mount *mnt)
 		WRITE_ONCE(m->mnt.mnt_flags, flags);
 
 		/* If we had to hold writers unblock them. */
-		if (mnt->mnt_pprev_for_sb & WRITE_HOLD)
-			mnt_unhold_writers(m);
+		mnt_unhold_writers(m);
 
 		if (kattr->propagation)
 			change_mnt_propagation(m, kattr->propagation);
