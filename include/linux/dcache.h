@@ -608,4 +608,23 @@ static inline struct dentry *d_next_sibling(const struct dentry *dentry)
 
 void set_default_d_op(struct super_block *, const struct dentry_operations *);
 
+struct stable_dentry {
+	struct dentry *__wrapped;
+};
+
+static inline struct stable_dentry claim_stability(struct dentry *dentry)
+{
+	return (struct stable_dentry){dentry};
+}
+
+static inline struct dentry *unwrap_dentry(struct stable_dentry d)
+{
+	return d.__wrapped;
+}
+
+static const struct qstr *stable_dentry_name(struct stable_dentry d)
+{
+	return &unwrap_dentry(d)->d_name;
+}
+
 #endif	/* __LINUX_DCACHE_H */
