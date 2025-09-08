@@ -942,8 +942,10 @@ static struct dentry *fuse_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 }
 
 static int fuse_symlink(struct mnt_idmap *idmap, struct inode *dir,
-			struct dentry *entry, const char *link)
+			struct stable_dentry child, const char *link)
 {
+	struct dentry *entry = unwrap_dentry(child);
+	const struct qstr *name = stable_dentry_name(child);
 	struct fuse_mount *fm = get_fuse_mount(dir);
 	unsigned len = strlen(link) + 1;
 	FUSE_ARGS(args);
@@ -951,8 +953,8 @@ static int fuse_symlink(struct mnt_idmap *idmap, struct inode *dir,
 	args.opcode = FUSE_SYMLINK;
 	args.in_numargs = 3;
 	fuse_set_zero_arg0(&args);
-	args.in_args[1].size = entry->d_name.len + 1;
-	args.in_args[1].value = entry->d_name.name;
+	args.in_args[1].size = name->len + 1;
+	args.in_args[1].value = name->name;
 	args.in_args[2].size = len;
 	args.in_args[2].value = link;
 	return create_new_nondir(idmap, fm, &args, dir, entry, S_IFLNK);

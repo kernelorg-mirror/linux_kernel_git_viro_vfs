@@ -8813,8 +8813,9 @@ out:
 }
 
 static int btrfs_symlink(struct mnt_idmap *idmap, struct inode *dir,
-			 struct dentry *dentry, const char *symname)
+			 struct stable_dentry child, const char *symname)
 {
+	struct dentry *dentry = unwrap_dentry(child);
 	struct btrfs_fs_info *fs_info = inode_to_fs_info(dir);
 	struct btrfs_trans_handle *trans;
 	struct btrfs_root *root = BTRFS_I(dir)->root;

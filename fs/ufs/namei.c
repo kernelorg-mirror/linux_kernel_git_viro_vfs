@@ -107,7 +107,7 @@ static int ufs_mknod(struct mnt_idmap *idmap, struct inode *dir,
 }
 
 static int ufs_symlink (struct mnt_idmap * idmap, struct inode * dir,
-	struct dentry * dentry, const char * symname)
+	struct stable_dentry child, const char *symname)
 {
 	struct super_block * sb = dir->i_sb;
 	int err;
@@ -139,7 +139,7 @@ static int ufs_symlink (struct mnt_idmap * idmap, struct inode * dir,
 	}
 	mark_inode_dirty(inode);
 
-	return ufs_add_nondir(dentry, inode);
+	return ufs_add_nondir(unwrap_dentry(child), inode);
 
 out_fail:
 	inode_dec_link_count(inode);

@@ -467,9 +467,10 @@ static int ecryptfs_unlink(struct inode *dir, struct dentry *dentry)
 }
 
 static int ecryptfs_symlink(struct mnt_idmap *idmap,
-			    struct inode *dir, struct dentry *dentry,
+			    struct inode *dir, struct stable_dentry child,
 			    const char *symname)
 {
+	struct dentry *dentry = unwrap_dentry(child);
 	int rc;
 	struct dentry *lower_dentry;
 	struct inode *lower_dir;

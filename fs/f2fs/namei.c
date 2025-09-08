@@ -622,8 +622,9 @@ static const char *f2fs_get_link(struct dentry *dentry,
 }
 
 static int f2fs_symlink(struct mnt_idmap *idmap, struct inode *dir,
-			struct dentry *dentry, const char *symname)
+			struct stable_dentry child, const char *symname)
 {
+	struct dentry *dentry = unwrap_dentry(child);
 	struct f2fs_sb_info *sbi = F2FS_I_SB(dir);
 	struct inode *inode;
 	size_t len = strlen(symname);

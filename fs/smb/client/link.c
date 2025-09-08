@@ -566,8 +566,9 @@ cifs_hl_exit:
 
 int
 cifs_symlink(struct mnt_idmap *idmap, struct inode *inode,
-	     struct dentry *direntry, const char *symname)
+	     struct stable_dentry child, const char *symname)
 {
+	struct dentry *direntry = unwrap_dentry(child);
 	int rc = -EOPNOTSUPP;
 	unsigned int xid;
 	struct cifs_sb_info *cifs_sb = CIFS_SB(inode->i_sb);

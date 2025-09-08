@@ -622,7 +622,7 @@ static inline struct dentry *unwrap_dentry(struct stable_dentry d)
 	return d.__wrapped;
 }
 
-static const struct qstr *stable_dentry_name(struct stable_dentry d)
+static inline const struct qstr *stable_dentry_name(struct stable_dentry d)
 {
 	return &unwrap_dentry(d)->d_name;
 }

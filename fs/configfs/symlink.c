@@ -138,8 +138,9 @@ static int get_target(const char *symname, struct path *path,
 
 
 int configfs_symlink(struct mnt_idmap *idmap, struct inode *dir,
-		     struct dentry *dentry, const char *symname)
+		     struct stable_dentry child, const char *symname)
 {
+	struct dentry *dentry = unwrap_dentry(child);
 	int ret;
 	struct path path;
 	struct configfs_dirent *sd;

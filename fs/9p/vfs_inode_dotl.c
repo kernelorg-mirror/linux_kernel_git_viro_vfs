@@ -686,19 +686,18 @@ v9fs_stat2inode_dotl(struct p9_stat_dotl *stat, struct inode *inode,
 
 static int
 v9fs_vfs_symlink_dotl(struct mnt_idmap *idmap, struct inode *dir,
-		      struct dentry *dentry, const char *symname)
+		      struct stable_dentry child, const char *symname)
 {
 	int err;
 	kgid_t gid;
-	const unsigned char *name;
+	const unsigned char *name = stable_dentry_name(child)->name;
 	struct p9_qid qid;
 	struct p9_fid *dfid;
 	struct p9_fid *fid = NULL;
 
-	name = dentry->d_name.name;
 	p9_debug(P9_DEBUG_VFS, "%lu,%s,%s\n", dir->i_ino, name, symname);
 
-	dfid = v9fs_parent_fid(dentry);
+	dfid = v9fs_parent_fid(unwrap_dentry(child));
 	if (IS_ERR(dfid)) {
 		err = PTR_ERR(dfid);
 		p9_debug(P9_DEBUG_VFS, "fid lookup failed %d\n", err);

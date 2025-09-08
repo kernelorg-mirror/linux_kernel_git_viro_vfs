@@ -4143,8 +4143,9 @@ static int shmem_rename2(struct mnt_idmap *idmap,
 }
 
 static int shmem_symlink(struct mnt_idmap *idmap, struct inode *dir,
-			 struct dentry *dentry, const char *symname)
+			 struct stable_dentry child, const char *symname)
 {
+	struct dentry *dentry = unwrap_dentry(child);
 	int error;
 	int len;
 	struct inode *inode;
@@ -4160,7 +4161,8 @@ static int shmem_symlink(struct mnt_idmap *idmap, struct inode *dir,
 	if (IS_ERR(inode))
 		return PTR_ERR(inode);
 
-	error = security_inode_init_security(inode, dir, &dentry->d_name,
+	error = security_inode_init_security(inode, dir,
+					     stable_dentry_name(child),
 					     shmem_initxattrs, NULL);
 	if (error && error != -EOPNOTSUPP)
 		goto out_iput;

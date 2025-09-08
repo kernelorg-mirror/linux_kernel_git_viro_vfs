@@ -1808,9 +1808,11 @@ bail:
 
 static int ocfs2_symlink(struct mnt_idmap *idmap,
 			 struct inode *dir,
-			 struct dentry *dentry,
+			 struct stable_dentry child,
 			 const char *symname)
 {
+	struct dentry *dentry = unwrap_dentry(child);
+	const struct qstr *name = stable_dentry_name(child);
 	int status, l, credits;
 	u64 newsize;
 	struct ocfs2_super *osb = NULL;
@@ -1836,8 +1838,7 @@ static int ocfs2_symlink(struct mnt_idmap *idmap,
 	int did_block_signals = 0;
 	struct ocfs2_dentry_lock *dl = NULL;
 
-	trace_ocfs2_symlink_begin(dir, dentry, symname,
-				  dentry->d_name.len, dentry->d_name.name);
+	trace_ocfs2_symlink_begin(dir, dentry, symname, name->len, name->name);
 
 	status = dquot_initialize(dir);
 	if (status) {
@@ -1867,14 +1868,13 @@ static int ocfs2_symlink(struct mnt_idmap *idmap,
 		goto bail;
 	}
 
-	status = ocfs2_check_dir_for_entry(dir, dentry->d_name.name,
-					   dentry->d_name.len);
+	status = ocfs2_check_dir_for_entry(dir, name->name, name->len);
 	if (status)
 		goto bail;
 
 	status = ocfs2_prepare_dir_for_insert(osb, dir, parent_fe_bh,
-					      dentry->d_name.name,
-					      dentry->d_name.len, &lookup);
+					      name->name,
+					      name->len, &lookup);
 	if (status < 0) {
 		mlog_errno(status);
 		goto bail;
@@ -1896,7 +1896,7 @@ static int ocfs2_symlink(struct mnt_idmap *idmap,
 	}
 
 	/* get security xattr */
-	status = ocfs2_init_security_get(inode, dir, &dentry->d_name, &si);
+	status = ocfs2_init_security_get(inode, dir, name, &si);
 	if (status) {
 		if (status == -EOPNOTSUPP)
 			si.enable = 0;
@@ -1944,8 +1944,7 @@ static int ocfs2_symlink(struct mnt_idmap *idmap,
 		goto bail;
 	did_quota_inode = 1;
 
-	trace_ocfs2_symlink_create(dir, dentry, dentry->d_name.len,
-				   dentry->d_name.name,
+	trace_ocfs2_symlink_create(dir, dentry, name->len, name->name,
 				   (unsigned long long)OCFS2_I(dir)->ip_blkno,
 				   inode->i_mode);
 

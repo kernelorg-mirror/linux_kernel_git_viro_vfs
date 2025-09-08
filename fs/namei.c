@@ -4727,7 +4727,7 @@ int vfs_symlink(struct mnt_idmap *idmap, struct inode *dir,
 	if (error)
 		return error;
 
-	error = dir->i_op->symlink(idmap, dir, dentry, oldname);
+	error = dir->i_op->symlink(idmap, dir, claim_stability(dentry), oldname);
 	if (!error)
 		fsnotify_create(dir, dentry);
 	return error;

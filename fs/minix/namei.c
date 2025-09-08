@@ -70,7 +70,7 @@ static int minix_create(struct mnt_idmap *idmap, struct inode *dir,
 }
 
 static int minix_symlink(struct mnt_idmap *idmap, struct inode *dir,
-			 struct dentry *dentry, const char *symname)
+			 struct stable_dentry child, const char *symname)
 {
 	int i = strlen(symname)+1;
 	struct inode * inode;
@@ -90,7 +90,7 @@ static int minix_symlink(struct mnt_idmap *idmap, struct inode *dir,
 		iput(inode);
 		return err;
 	}
-	return add_nondir(dentry, inode);
+	return add_nondir(unwrap_dentry(child), inode);
 }
 
 static int minix_link(struct dentry * old_dentry, struct inode * dir,

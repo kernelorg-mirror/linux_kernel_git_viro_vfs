@@ -428,9 +428,10 @@ STATIC int
 xfs_vn_symlink(
 	struct mnt_idmap	*idmap,
 	struct inode		*dir,
-	struct dentry		*dentry,
+	struct stable_dentry	child,
 	const char		*symname)
 {
+	struct dentry	*dentry = unwrap_dentry(child);
 	struct inode	*inode;
 	struct xfs_inode *cip = NULL;
 	struct xfs_name	name;

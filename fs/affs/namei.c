@@ -314,8 +314,9 @@ affs_rmdir(struct inode *dir, struct dentry *dentry)
 
 int
 affs_symlink(struct mnt_idmap *idmap, struct inode *dir,
-	     struct dentry *dentry, const char *symname)
+	     struct stable_dentry child, const char *symname)
 {
+	struct dentry		*dentry = unwrap_dentry(child);
 	struct super_block	*sb = dir->i_sb;
 	struct buffer_head	*bh;
 	struct inode		*inode;

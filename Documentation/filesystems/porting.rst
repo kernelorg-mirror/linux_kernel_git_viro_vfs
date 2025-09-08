@@ -1285,3 +1285,16 @@ rather than a VMA, as the VMA at this stage is not yet valid.
 The vm_area_desc provides the minimum required information for a filesystem
 to initialise state upon memory mapping of a file-backed region, and output
 parameters for the file system to set this state.
+
+--
+
+**mandatory**
+
+->symlink() takes struct stable_dentry now; if you are affected, replace
+the third argument with struct stable_dentry and use unwrap_dentry()
+to obtain the dentry reference from it.  If your ->symlink() instance
+happens to be called directly, wrap the argument into claim_stability()
+at the call site (and check that you do have sufficient locking
+environment there - if you didn't, it's a bug right there and you'd
+need to fix it first, so that it could be backported without dragging
+the calling conventions change along).

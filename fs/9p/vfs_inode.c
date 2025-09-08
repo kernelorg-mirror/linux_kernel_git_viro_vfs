@@ -1253,8 +1253,9 @@ static int v9fs_vfs_mkspecial(struct inode *dir, struct dentry *dentry,
 
 static int
 v9fs_vfs_symlink(struct mnt_idmap *idmap, struct inode *dir,
-		 struct dentry *dentry, const char *symname)
+		 struct stable_dentry child, const char *symname)
 {
+	struct dentry *dentry = unwrap_dentry(child);
 	p9_debug(P9_DEBUG_VFS, " %lu,%pd,%s\n",
 		 dir->i_ino, dentry, symname);
 

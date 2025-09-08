@@ -1019,8 +1019,9 @@ static int prep_encrypted_symlink_target(struct ceph_mds_request *req,
 #endif
 
 static int ceph_symlink(struct mnt_idmap *idmap, struct inode *dir,
-			struct dentry *dentry, const char *dest)
+			struct stable_dentry child, const char *dest)
 {
+	struct dentry *dentry = unwrap_dentry(child);
 	struct ceph_mds_client *mdsc = ceph_sb_to_mdsc(dir->i_sb);
 	struct ceph_client *cl = mdsc->fsc->client;
 	struct ceph_mds_request *req;

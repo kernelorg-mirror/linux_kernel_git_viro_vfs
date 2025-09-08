@@ -92,7 +92,7 @@ extern const struct inode_operations configfs_symlink_inode_operations;
 extern const struct dentry_operations configfs_dentry_ops;
 
 extern int configfs_symlink(struct mnt_idmap *idmap,
-			    struct inode *dir, struct dentry *dentry,
+			    struct inode *dir, struct stable_dentry child,
 			    const char *symname);
 extern int configfs_unlink(struct inode *dir, struct dentry *dentry);
 

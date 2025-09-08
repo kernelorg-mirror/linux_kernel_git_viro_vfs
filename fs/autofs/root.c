@@ -12,7 +12,7 @@
 
 static int autofs_dir_permission(struct mnt_idmap *, struct inode *, int);
 static int autofs_dir_symlink(struct mnt_idmap *, struct inode *,
-			      struct dentry *, const char *);
+			      struct stable_dentry, const char *);
 static int autofs_dir_unlink(struct inode *, struct dentry *);
 static int autofs_dir_rmdir(struct inode *, struct dentry *);
 static struct dentry *autofs_dir_mkdir(struct mnt_idmap *, struct inode *,
@@ -564,9 +564,10 @@ static int autofs_dir_permission(struct mnt_idmap *idmap,
 }
 
 static int autofs_dir_symlink(struct mnt_idmap *idmap,
-			      struct inode *dir, struct dentry *dentry,
+			      struct inode *dir, struct stable_dentry child,
 			      const char *symname)
 {
+	struct dentry *dentry = unwrap_dentry(child);
 	struct autofs_info *ino = autofs_dentry_ino(dentry);
 	struct autofs_info *p_ino;
 	struct inode *inode;

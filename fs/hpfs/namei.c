@@ -286,10 +286,11 @@ bail:
 }
 
 static int hpfs_symlink(struct mnt_idmap *idmap, struct inode *dir,
-			struct dentry *dentry, const char *symlink)
+			struct stable_dentry child, const char *symlink)
 {
-	const unsigned char *name = dentry->d_name.name;
-	unsigned len = dentry->d_name.len;
+	const struct qstr *dname = stable_dentry_name(child);
+	const unsigned char *name = dname->name;
+	unsigned len = dname->len;
 	struct buffer_head *bh;
 	struct fnode *fnode;
 	fnode_secno fno;
@@ -350,7 +351,7 @@ static int hpfs_symlink(struct mnt_idmap *idmap, struct inode *dir,
 
 	hpfs_write_inode_nolock(result);
 	hpfs_update_directory_times(dir);
-	d_instantiate(dentry, result);
+	d_instantiate(unwrap_dentry(child), result);
 	hpfs_unlock(dir->i_sb);
 	return 0;
 bail2:

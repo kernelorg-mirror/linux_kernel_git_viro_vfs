@@ -52,7 +52,7 @@ static int bad_inode_unlink(struct inode *dir, struct dentry *dentry)
 }
 
 static int bad_inode_symlink(struct mnt_idmap *idmap,
-			     struct inode *dir, struct dentry *dentry,
+			     struct inode *dir, struct stable_dentry child,
 			     const char *symname)
 {
 	return -EIO;

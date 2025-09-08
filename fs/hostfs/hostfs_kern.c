@@ -674,12 +674,12 @@ static int hostfs_unlink(struct inode *ino, struct dentry *dentry)
 }
 
 static int hostfs_symlink(struct mnt_idmap *idmap, struct inode *ino,
-			  struct dentry *dentry, const char *to)
+			  struct stable_dentry child, const char *to)
 {
 	char *file;
 	int err;
 
-	if ((file = dentry_name(dentry)) == NULL)
+	if ((file = dentry_name(unwrap_dentry(child))) == NULL)
 		return -ENOMEM;
 	err = make_symlink(file, to);
 	__putname(file);

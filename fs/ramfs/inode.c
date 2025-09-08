@@ -135,8 +135,9 @@ static int ramfs_create(struct mnt_idmap *idmap, struct inode *dir,
 }
 
 static int ramfs_symlink(struct mnt_idmap *idmap, struct inode *dir,
-			 struct dentry *dentry, const char *symname)
+			 struct stable_dentry child, const char *symname)
 {
+	struct dentry *dentry = unwrap_dentry(child);
 	struct inode *inode;
 	int error = -ENOSPC;
 
@@ -145,8 +146,8 @@ static int ramfs_symlink(struct mnt_idmap *idmap, struct inode *dir,
 		int l = strlen(symname)+1;
 
 		error = security_inode_init_security(inode, dir,
-						     &dentry->d_name, NULL,
-						     NULL);
+						     stable_dentry_name(child),
+						     NULL, NULL);
 		if (error) {
 			iput(inode);
 			goto out;

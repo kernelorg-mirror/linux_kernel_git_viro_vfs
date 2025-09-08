@@ -3354,8 +3354,9 @@ out:
 }
 
 static int ext4_symlink(struct mnt_idmap *idmap, struct inode *dir,
-			struct dentry *dentry, const char *symname)
+			struct stable_dentry child, const char *symname)
 {
+	struct dentry *dentry = unwrap_dentry(child);
 	handle_t *handle;
 	struct inode *inode;
 	int err, len = strlen(symname);

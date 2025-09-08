@@ -381,7 +381,7 @@ bpf_lookup(struct inode *dir, struct dentry *dentry, unsigned flags)
 }
 
 static int bpf_symlink(struct mnt_idmap *idmap, struct inode *dir,
-		       struct dentry *dentry, const char *target)
+		       struct stable_dentry child, const char *target)
 {
 	char *link = kstrdup(target, GFP_USER | __GFP_NOWARN);
 	struct inode *inode;
@@ -398,7 +398,7 @@ static int bpf_symlink(struct mnt_idmap *idmap, struct inode *dir,
 	inode->i_op = &simple_symlink_inode_operations;
 	inode->i_link = link;
 
-	bpf_dentry_finalize(dentry, inode, dir);
+	bpf_dentry_finalize(unwrap_dentry(child), inode, dir);
 	return 0;
 }
 

@@ -432,9 +432,8 @@ err_put_old_path:
 	return err;
 }
 
-static int vboxsf_dir_symlink(struct mnt_idmap *idmap,
-			      struct inode *parent, struct dentry *dentry,
-			      const char *symname)
+static int vboxsf_dir_symlink(struct mnt_idmap *idmap, struct inode *parent,
+			      struct stable_dentry child, const char *symname)
 {
 	struct vboxsf_inode *sf_parent_i = VBOXSF_I(parent);
 	struct vboxsf_sbi *sbi = VBOXSF_SBI(parent->i_sb);
@@ -443,7 +442,7 @@ static int vboxsf_dir_symlink(struct mnt_idmap *idmap,
 	struct shfl_fsobjinfo info;
 	int err;
 
-	path = vboxsf_path_from_dentry(sbi, dentry);
+	path = vboxsf_path_from_dentry(sbi, unwrap_dentry(child));
 	if (IS_ERR(path))
 		return PTR_ERR(path);
 
@@ -464,7 +463,7 @@ static int vboxsf_dir_symlink(struct mnt_idmap *idmap,
 		return (err == -EROFS) ? -EPERM : err;
 	}
 
-	err = vboxsf_dir_instantiate(parent, dentry, &info);
+	err = vboxsf_dir_instantiate(parent, unwrap_dentry(child), &info);
 	if (err)
 		return err;
 

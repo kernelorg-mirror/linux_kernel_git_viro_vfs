@@ -118,7 +118,7 @@ extern struct vfsmount *cifs_d_automount(struct path *path);
 extern const char *cifs_get_link(struct dentry *, struct inode *,
 			struct delayed_call *);
 extern int cifs_symlink(struct mnt_idmap *idmap, struct inode *inode,
-			struct dentry *direntry, const char *symname);
+			struct stable_dentry child, const char *symname);
 
 #ifdef CONFIG_CIFS_XATTR
 extern const struct xattr_handler * const cifs_xattr_handlers[];

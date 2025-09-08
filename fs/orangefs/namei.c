@@ -215,9 +215,10 @@ static int orangefs_unlink(struct inode *dir, struct dentry *dentry)
 
 static int orangefs_symlink(struct mnt_idmap *idmap,
 		         struct inode *dir,
-			 struct dentry *dentry,
+			 struct stable_dentry child,
 			 const char *symname)
 {
+	struct dentry *dentry = unwrap_dentry(child);
 	struct orangefs_inode_s *parent = ORANGEFS_I(dir);
 	struct orangefs_kernel_op_s *new_op;
 	struct orangefs_object_kref ref;

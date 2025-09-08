@@ -191,7 +191,7 @@ static int ntfs_unlink(struct inode *dir, struct dentry *dentry)
  * ntfs_symlink - inode_operations::symlink
  */
 static int ntfs_symlink(struct mnt_idmap *idmap, struct inode *dir,
-			struct dentry *dentry, const char *symname)
+			struct stable_dentry child, const char *symname)
 {
 	u32 size = strlen(symname);
 
@@ -202,7 +202,7 @@ static int ntfs_symlink(struct mnt_idmap *idmap, struct inode *dir,
 	if (unlikely(ntfs3_forced_shutdown(dir->i_sb)))
 		return -EIO;
 
-	return ntfs_create_inode(idmap, dir, dentry, NULL, S_IFLNK | 0777, 0,
+	return ntfs_create_inode(idmap, dir, unwrap_dentry(child), NULL, S_IFLNK | 0777, 0,
 				 symname, size, NULL);
 }
 

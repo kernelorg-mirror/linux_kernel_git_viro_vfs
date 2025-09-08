@@ -876,8 +876,9 @@ static int jfs_link(struct dentry *old_dentry,
 */
 
 static int jfs_symlink(struct mnt_idmap *idmap, struct inode *dip,
-		       struct dentry *dentry, const char *name)
+		       struct stable_dentry child, const char *name)
 {
+	const struct qstr *new_name = stable_dentry_name(child);
 	int rc;
 	tid_t tid;
 	ino_t ino = 0;
@@ -907,7 +908,7 @@ static int jfs_symlink(struct mnt_idmap *idmap, struct inode *dip,
 	 * (dtSearch() returns parent directory page pinned)
 	 */
 
-	if ((rc = get_UCSname(&dname, dentry)))
+	if ((rc = get_UCSname(&dname, unwrap_dentry(child))))
 		goto out1;
 
 	/*
@@ -925,7 +926,7 @@ static int jfs_symlink(struct mnt_idmap *idmap, struct inode *dip,
 	mutex_lock_nested(&JFS_IP(dip)->commit_mutex, COMMIT_MUTEX_PARENT);
 	mutex_lock_nested(&JFS_IP(ip)->commit_mutex, COMMIT_MUTEX_CHILD);
 
-	rc = jfs_init_security(tid, ip, dip, &dentry->d_name);
+	rc = jfs_init_security(tid, ip, dip, new_name);
 	if (rc)
 		goto out3;
 
@@ -1048,7 +1049,7 @@ static int jfs_symlink(struct mnt_idmap *idmap, struct inode *dip,
 		clear_nlink(ip);
 		discard_new_inode(ip);
 	} else {
-		d_instantiate_new(dentry, ip);
+		d_instantiate_new(unwrap_dentry(child), ip);
 	}
 
       out2:

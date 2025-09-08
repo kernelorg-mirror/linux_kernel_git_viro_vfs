@@ -2587,8 +2587,9 @@ EXPORT_SYMBOL_GPL(nfs_unlink);
  * and move the raw page into its mapping.
  */
 int nfs_symlink(struct mnt_idmap *idmap, struct inode *dir,
-		struct dentry *dentry, const char *symname)
+		struct stable_dentry child, const char *symname)
 {
+	struct dentry *dentry = unwrap_dentry(child);
 	struct folio *folio;
 	char *kaddr;
 	struct iattr attr;

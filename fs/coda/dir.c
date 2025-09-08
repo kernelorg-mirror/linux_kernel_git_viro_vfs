@@ -229,9 +229,10 @@ static int coda_link(struct dentry *source_de, struct inode *dir_inode,
 
 
 static int coda_symlink(struct mnt_idmap *idmap,
-			struct inode *dir_inode, struct dentry *de,
+			struct inode *dir_inode, struct stable_dentry child,
 			const char *symname)
 {
+	struct dentry *de = unwrap_dentry(child);
 	const char *name = de->d_name.name;
 	int len = de->d_name.len;
 	int symlen;

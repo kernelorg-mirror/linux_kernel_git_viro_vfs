@@ -139,7 +139,7 @@ nilfs_mknod(struct mnt_idmap *idmap, struct inode *dir,
 }
 
 static int nilfs_symlink(struct mnt_idmap *idmap, struct inode *dir,
-			 struct dentry *dentry, const char *symname)
+			 struct stable_dentry child, const char *symname)
 {
 	struct nilfs_transaction_info ti;
 	struct super_block *sb = dir->i_sb;
@@ -173,7 +173,7 @@ static int nilfs_symlink(struct mnt_idmap *idmap, struct inode *dir,
 	/* mark_inode_dirty(inode); */
 	/* page_symlink() do this */
 
-	err = nilfs_add_nondir(dentry, inode);
+	err = nilfs_add_nondir(unwrap_dentry(child), inode);
 out:
 	if (!err)
 		err = nilfs_transaction_commit(dir->i_sb);

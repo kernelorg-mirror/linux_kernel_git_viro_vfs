@@ -435,8 +435,9 @@ out:
 }
 
 static int hfsplus_symlink(struct mnt_idmap *idmap, struct inode *dir,
-			   struct dentry *dentry, const char *symname)
+			   struct stable_dentry child, const char *symname)
 {
+	const struct qstr *name = stable_dentry_name(child);
 	struct hfsplus_sb_info *sbi = HFSPLUS_SB(dir->i_sb);
 	struct inode *inode;
 	int res = -ENOMEM;
@@ -450,20 +451,20 @@ static int hfsplus_symlink(struct mnt_idmap *idmap, struct inode *dir,
 	if (res)
 		goto out_err;
 
-	res = hfsplus_create_cat(inode->i_ino, dir, &dentry->d_name, inode);
+	res = hfsplus_create_cat(inode->i_ino, dir, name, inode);
 	if (res)
 		goto out_err;
 
-	res = hfsplus_init_security(inode, dir, &dentry->d_name);
+	res = hfsplus_init_security(inode, dir, name);
 	if (res == -EOPNOTSUPP)
 		res = 0; /* Operation is not supported. */
 	else if (res) {
 		/* Try to delete anyway without error analysis. */
-		hfsplus_delete_cat(inode->i_ino, dir, &dentry->d_name);
+		hfsplus_delete_cat(inode->i_ino, dir, name);
 		goto out_err;
 	}
 
-	hfsplus_instantiate(dentry, inode, inode->i_ino);
+	hfsplus_instantiate(unwrap_dentry(child), inode, inode->i_ino);
 	mark_inode_dirty(inode);
 	goto out;
 

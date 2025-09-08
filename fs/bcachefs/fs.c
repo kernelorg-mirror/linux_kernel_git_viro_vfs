@@ -866,9 +866,10 @@ static int bch2_unlink(struct inode *vdir, struct dentry *dentry)
 }
 
 static int bch2_symlink(struct mnt_idmap *idmap,
-			struct inode *vdir, struct dentry *dentry,
+			struct inode *vdir, struct stable_dentry child,
 			const char *symname)
 {
+	struct dentry *dentry = unwrap_dentry(child);
 	struct bch_fs *c = vdir->i_sb->s_fs_info;
 	struct bch_inode_info *dir = to_bch_ei(vdir), *inode;
 	int ret;

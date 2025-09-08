@@ -1308,8 +1308,9 @@ out_inodes:
  */
 
 static int gfs2_symlink(struct mnt_idmap *idmap, struct inode *dir,
-			struct dentry *dentry, const char *symname)
+			struct stable_dentry child, const char *symname)
 {
+	struct dentry *dentry = unwrap_dentry(child);
 	unsigned int size;
 
 	size = strlen(symname);

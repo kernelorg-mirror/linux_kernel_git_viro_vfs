@@ -155,8 +155,9 @@ static int ext2_mknod (struct mnt_idmap * idmap, struct inode * dir,
 }
 
 static int ext2_symlink (struct mnt_idmap * idmap, struct inode * dir,
-	struct dentry * dentry, const char * symname)
+	struct stable_dentry child, const char * symname)
 {
+	struct dentry *dentry = unwrap_dentry(child);
 	struct super_block * sb = dir->i_sb;
 	int err = -ENAMETOOLONG;
 	unsigned l = strlen(symname)+1;

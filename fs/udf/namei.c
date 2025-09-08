@@ -568,7 +568,7 @@ out:
 }
 
 static int udf_symlink(struct mnt_idmap *idmap, struct inode *dir,
-		       struct dentry *dentry, const char *symname)
+		       struct stable_dentry child, const char *symname)
 {
 	struct inode *inode;
 	struct pathComponent *pc;
@@ -716,7 +716,7 @@ static int udf_symlink(struct mnt_idmap *idmap, struct inode *dir,
 	mark_inode_dirty(inode);
 	up_write(&iinfo->i_data_sem);
 
-	err = udf_add_nondir(dentry, inode);
+	err = udf_add_nondir(unwrap_dentry(child), inode);
 out:
 	kfree(name);
 	return err;

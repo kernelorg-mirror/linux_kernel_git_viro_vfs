@@ -699,9 +699,9 @@ static int ovl_mknod(struct mnt_idmap *idmap, struct inode *dir,
 }
 
 static int ovl_symlink(struct mnt_idmap *idmap, struct inode *dir,
-		       struct dentry *dentry, const char *link)
+		       struct stable_dentry child, const char *link)
 {
-	return ovl_create_object(dentry, S_IFLNK, 0, link);
+	return ovl_create_object(unwrap_dentry(child), S_IFLNK, 0, link);
 }
 
 static int ovl_set_link_redirect(struct dentry *dentry)
