@@ -189,60 +189,15 @@ static const struct dentry_operations efivarfs_d_ops = {
 	.d_hash = efivarfs_d_hash,
 };
 
-static int efivarfs_create_dentry(struct super_block *sb, efi_char16_t *name16,
-				  unsigned long name_size, efi_guid_t vendor,
-				  char *name)
-{
-	struct efivar_entry *entry;
-	struct inode *inode;
-	struct dentry *dentry, *root = sb->s_root;
-	unsigned long size = 0;
-	int len;
-	int err = 0;
-	bool is_removable = false;
-
-	/* length of the variable name itself: remove GUID and separator */
-	len = strlen(name) - EFI_VARIABLE_GUID_LEN - 1;
-
-	if (efivar_variable_is_removable(vendor, name, len))
-		is_removable = true;
-
-	dentry = simple_start_creating(root, name);
-	if (IS_ERR(dentry)) {
-		err = PTR_ERR(dentry);
-		goto out_name;
-	}
-
-	inode = efivarfs_get_inode(sb, S_IFREG | 0644, 0, is_removable);
-	if (unlikely(!inode)) {
-		err = -ENOMEM;
-		goto out_dentry;
-	}
-
-	entry = efivar_entry(inode);
-
-	memcpy(entry->var.VariableName, name16, name_size);
-	memcpy(&(entry->var.VendorGuid), &vendor, sizeof(efi_guid_t));
-
-	__efivar_entry_get(entry, NULL, &size, NULL);
-
-	inode_lock(inode);
-	inode->i_private = entry;
-	i_size_write(inode, size + sizeof(__u32)); /* attributes + data */
-	inode_unlock(inode);
-	d_make_persistent(dentry, inode);
-
-out_dentry:
-	simple_done_creating(dentry);
-out_name:
-	kfree(name);
-	return err;
-}
-
 int efivarfs_add(efi_char16_t *name16, efi_guid_t vendor,
 		 unsigned long name_size, struct super_block *sb)
 {
-	char *name;
+	char *name __free(kfree) = NULL;
+	struct efivar_entry *entry;
+	struct inode *inode;
+	struct dentry *dentry;
+	unsigned long size = 0;
+	int len;
 
 	if (guid_equal(&vendor, &LINUX_EFI_RANDOM_SEED_TABLE_GUID))
 		return 0;
@@ -251,7 +206,34 @@ int efivarfs_add(efi_char16_t *name16, efi_guid_t vendor,
 	if (!name)
 		return -ENOMEM;
 
-	return efivarfs_create_dentry(sb, name16, name_size, vendor, name);
+	/* length of the variable name itself: remove GUID and separator */
+	len = strlen(name) - EFI_VARIABLE_GUID_LEN - 1;
+
+	dentry = simple_start_creating(sb->s_root, name);
+	if (IS_ERR(dentry))
+		return PTR_ERR(dentry);
+
+	inode = efivarfs_get_inode(sb, S_IFREG | 0644, 0,
+			efivar_variable_is_removable(vendor, name, len));
+	if (unlikely(!inode)) {
+		simple_done_creating(dentry);
+		return -ENOMEM;
+	}
+
+	entry = efivar_entry(inode);
+
+	memcpy(entry->var.VariableName, name16, name_size);
+	entry->var.VendorGuid = vendor;
+
+	__efivar_entry_get(entry, NULL, &size, NULL);
+
+	inode_lock(inode);
+	inode->i_private = entry;
+	i_size_write(inode, size + sizeof(__u32)); /* attributes + data */
+	inode_unlock(inode);
+	d_make_persistent(dentry, inode);
+	simple_done_creating(dentry);
+	return 0;
 }
 
 enum {
