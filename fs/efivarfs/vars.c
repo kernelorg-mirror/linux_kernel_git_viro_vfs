@@ -407,6 +407,8 @@ int efivar_init(int (*func)(efi_char16_t *, efi_guid_t, unsigned long, void *),
 		case EFI_SUCCESS:
 			variable_name_size = var_name_strnsize(variable_name,
 							       variable_name_size);
+			err = func(variable_name, vendor_guid,
+				   variable_name_size, data);
 
 			/*
 			 * Some firmware implementations return the
@@ -416,18 +418,16 @@ int efivar_init(int (*func)(efi_char16_t *, efi_guid_t, unsigned long, void *),
 			 * we'll ever see a different variable name,
 			 * and may end up looping here forever.
 			 */
-			if (duplicate_check &&
-			    efivarfs_variable_is_present(variable_name,
-							 &vendor_guid, data)) {
-				dup_variable_bug(variable_name, &vendor_guid,
-						 variable_name_size);
-				status = EFI_NOT_FOUND;
-			} else {
-				err = func(variable_name, vendor_guid,
-					   variable_name_size, data);
-				if (err)
-					status = EFI_NOT_FOUND;
+			if (err == -EEXIST) {
+				if (duplicate_check)
+					dup_variable_bug(variable_name,
+							 &vendor_guid,
+							 variable_name_size);
+				else
+					err = 0;
 			}
+			if (err)
+				status = EFI_NOT_FOUND;
 			break;
 		case EFI_UNSUPPORTED:
 			err = -EOPNOTSUPP;

@@ -189,52 +189,6 @@ static const struct dentry_operations efivarfs_d_ops = {
 	.d_hash = efivarfs_d_hash,
 };
 
-static struct dentry *efivarfs_alloc_dentry(struct dentry *parent, char *name)
-{
-	struct dentry *d;
-	struct qstr q;
-	int err;
-
-	q.name = name;
-	q.len = strlen(name);
-
-	err = efivarfs_d_hash(parent, &q);
-	if (err)
-		return ERR_PTR(err);
-
-	d = d_alloc(parent, &q);
-	if (d)
-		return d;
-
-	return ERR_PTR(-ENOMEM);
-}
-
-bool efivarfs_variable_is_present(efi_char16_t *variable_name,
-				  efi_guid_t *vendor, void *data)
-{
-	char *name = efivar_get_utf8name(variable_name, vendor);
-	struct super_block *sb = data;
-	struct dentry *dentry;
-
-	if (!name)
-		/*
-		 * If the allocation failed there'll already be an
-		 * error in the log (and likely a huge and growing
-		 * number of them since they system will be under
-		 * extreme memory pressure), so simply assume
-		 * collision for safety but don't add to the log
-		 * flood.
-		 */
-		return true;
-
-	dentry = try_lookup_noperm(&QSTR(name), sb->s_root);
-	kfree(name);
-	if (!IS_ERR_OR_NULL(dentry))
-		dput(dentry);
-
-	return dentry != NULL;
-}
-
 static int efivarfs_create_dentry(struct super_block *sb, efi_char16_t *name16,
 				  unsigned long name_size, efi_guid_t vendor,
 				  char *name)
@@ -244,7 +198,7 @@ static int efivarfs_create_dentry(struct super_block *sb, efi_char16_t *name16,
 	struct dentry *dentry, *root = sb->s_root;
 	unsigned long size = 0;
 	int len;
-	int err = -ENOMEM;
+	int err = 0;
 	bool is_removable = false;
 
 	/* length of the variable name itself: remove GUID and separator */
@@ -253,41 +207,36 @@ static int efivarfs_create_dentry(struct super_block *sb, efi_char16_t *name16,
 	if (efivar_variable_is_removable(vendor, name, len))
 		is_removable = true;
 
+	dentry = simple_start_creating(root, name);
+	if (IS_ERR(dentry)) {
+		err = PTR_ERR(dentry);
+		goto out_name;
+	}
+
 	inode = efivarfs_get_inode(sb, d_inode(root), S_IFREG | 0644, 0,
 				   is_removable);
-	if (!inode)
-		goto fail_name;
+	if (unlikely(!inode)) {
+		err = -ENOMEM;
+		goto out_dentry;
+	}
 
 	entry = efivar_entry(inode);
 
 	memcpy(entry->var.VariableName, name16, name_size);
 	memcpy(&(entry->var.VendorGuid), &vendor, sizeof(efi_guid_t));
 
-	dentry = efivarfs_alloc_dentry(root, name);
-	if (IS_ERR(dentry)) {
-		err = PTR_ERR(dentry);
-		goto fail_inode;
-	}
-
 	__efivar_entry_get(entry, NULL, &size, NULL);
-
-	/* copied by the above to local storage in the dentry. */
-	kfree(name);
 
 	inode_lock(inode);
 	inode->i_private = entry;
 	i_size_write(inode, size + sizeof(__u32)); /* attributes + data */
 	inode_unlock(inode);
 	d_make_persistent(dentry, inode);
-	dput(dentry);
 
-	return 0;
-
-fail_inode:
-	iput(inode);
-fail_name:
+out_dentry:
+	simple_done_creating(dentry);
+out_name:
 	kfree(name);
-
 	return err;
 }
 
@@ -407,42 +356,6 @@ static const struct fs_context_operations efivarfs_context_ops = {
 	.free		= efivarfs_free,
 };
 
-static int efivarfs_check_missing(efi_char16_t *name16, efi_guid_t vendor,
-				  unsigned long name_size, void *data)
-{
-	char *name;
-	struct super_block *sb = data;
-	struct dentry *dentry;
-	int err;
-
-	if (guid_equal(&vendor, &LINUX_EFI_RANDOM_SEED_TABLE_GUID))
-		return 0;
-
-	name = efivar_get_utf8name(name16, &vendor);
-	if (!name)
-		return -ENOMEM;
-
-	dentry = try_lookup_noperm(&QSTR(name), sb->s_root);
-	if (IS_ERR(dentry)) {
-		err = PTR_ERR(dentry);
-		goto out;
-	}
-
-	if (!dentry) {
-		/* found missing entry */
-		pr_info("efivarfs: creating variable %s\n", name);
-		return efivarfs_create_dentry(sb, name16, name_size, vendor, name);
-	}
-
-	dput(dentry);
-	err = 0;
-
- out:
-	kfree(name);
-
-	return err;
-}
-
 static struct file_system_type efivarfs_type;
 
 static int efivarfs_freeze_fs(struct super_block *sb)
@@ -493,7 +406,7 @@ static int efivarfs_unfreeze_fs(struct super_block *sb)
 		}
 	}
 
-	efivar_init(efivarfs_check_missing, sb, false);
+	efivar_init(efivarfs_callback, sb, false);
 	pr_info("efivarfs: finished resyncing variable state\n");
 	return 0;
 }
