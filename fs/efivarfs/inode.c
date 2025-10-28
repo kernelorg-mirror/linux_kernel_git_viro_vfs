@@ -17,7 +17,7 @@
 static const struct inode_operations efivarfs_file_inode_operations;
 
 struct inode *efivarfs_get_inode(struct super_block *sb,
-				const struct inode *dir, int mode,
+				int mode,
 				dev_t dev, bool is_removable)
 {
 	struct inode *inode = new_inode(sb);
@@ -99,7 +99,7 @@ static int efivarfs_create(struct mnt_idmap *idmap, struct inode *dir,
 					 dentry->d_name.name, namelen))
 		is_removable = true;
 
-	inode = efivarfs_get_inode(dir->i_sb, dir, mode, 0, is_removable);
+	inode = efivarfs_get_inode(dir->i_sb, mode, 0, is_removable);
 	if (!inode)
 		return -ENOMEM;
 	var = efivar_entry(inode);

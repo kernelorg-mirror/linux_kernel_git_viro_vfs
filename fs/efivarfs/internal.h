@@ -60,7 +60,6 @@ char *efivar_get_utf8name(const efi_char16_t *name16, efi_guid_t *vendor);
 extern const struct file_operations efivarfs_file_operations;
 extern const struct inode_operations efivarfs_dir_inode_operations;
 extern struct inode *efivarfs_get_inode(struct super_block *sb,
-			const struct inode *dir, int mode, dev_t dev,
-			bool is_removable);
+			int mode, dev_t dev, bool is_removable);
 
 #endif /* EFIVAR_FS_INTERNAL_H */

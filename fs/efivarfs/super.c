@@ -213,8 +213,7 @@ static int efivarfs_create_dentry(struct super_block *sb, efi_char16_t *name16,
 		goto out_name;
 	}
 
-	inode = efivarfs_get_inode(sb, d_inode(root), S_IFREG | 0644, 0,
-				   is_removable);
+	inode = efivarfs_get_inode(sb, S_IFREG | 0644, 0, is_removable);
 	if (unlikely(!inode)) {
 		err = -ENOMEM;
 		goto out_dentry;
@@ -309,7 +308,7 @@ static int efivarfs_fill_super(struct super_block *sb, struct fs_context *fc)
 	if (!efivar_supports_writes())
 		sb->s_flags |= SB_RDONLY;
 
-	inode = efivarfs_get_inode(sb, NULL, S_IFDIR | 0755, 0, true);
+	inode = efivarfs_get_inode(sb, S_IFDIR | 0755, 0, true);
 	if (!inode)
 		return -ENOMEM;
 	inode->i_op = &efivarfs_dir_inode_operations;
