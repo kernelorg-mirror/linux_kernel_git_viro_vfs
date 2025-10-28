@@ -240,10 +240,9 @@ out_name:
 	return err;
 }
 
-static int efivarfs_callback(efi_char16_t *name16, efi_guid_t vendor,
-			     unsigned long name_size, void *data)
+int efivarfs_add(efi_char16_t *name16, efi_guid_t vendor,
+		 unsigned long name_size, struct super_block *sb)
 {
-	struct super_block *sb = (struct super_block *)data;
 	char *name;
 
 	if (guid_equal(&vendor, &LINUX_EFI_RANDOM_SEED_TABLE_GUID))
@@ -326,7 +325,7 @@ static int efivarfs_fill_super(struct super_block *sb, struct fs_context *fc)
 	if (err)
 		return err;
 
-	return efivar_init(efivarfs_callback, sb, true);
+	return efivar_scan(sb, true);
 }
 
 static int efivarfs_get_tree(struct fs_context *fc)
@@ -406,7 +405,7 @@ static int efivarfs_unfreeze_fs(struct super_block *sb)
 		}
 	}
 
-	efivar_init(efivarfs_callback, sb, false);
+	efivar_scan(sb, false);
 	pr_info("efivarfs: finished resyncing variable state\n");
 	return 0;
 }

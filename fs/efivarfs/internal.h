@@ -36,8 +36,9 @@ static inline struct efivar_entry *efivar_entry(struct inode *inode)
 	return container_of(inode, struct efivar_entry, vfs_inode);
 }
 
-int efivar_init(int (*func)(efi_char16_t *, efi_guid_t, unsigned long, void *),
-		void *data, bool duplicate_check);
+int efivar_scan(struct super_block *sb, bool duplicate_check);
+int efivarfs_add(efi_char16_t *name16, efi_guid_t vendor,
+		 unsigned long name_size, struct super_block *sb);
 
 int efivar_entry_delete(struct efivar_entry *entry);
 

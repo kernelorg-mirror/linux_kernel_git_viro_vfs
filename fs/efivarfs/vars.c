@@ -361,9 +361,8 @@ static void dup_variable_bug(efi_char16_t *str16, efi_guid_t *vendor_guid,
 }
 
 /**
- * efivar_init - build the initial list of EFI variables
- * @func: callback function to invoke for every variable
- * @data: function-specific data to pass to @func
+ * efivar_scan - build the initial list of EFI variables
+ * @sb: filesystem instance
  * @duplicate_check: fail if a duplicate variable is found
  *
  * Get every EFI variable from the firmware and invoke @func. @func
@@ -371,8 +370,7 @@ static void dup_variable_bug(efi_char16_t *str16, efi_guid_t *vendor_guid,
  *
  * Returns 0 on success, or a kernel error code on failure.
  */
-int efivar_init(int (*func)(efi_char16_t *, efi_guid_t, unsigned long, void *),
-		void *data, bool duplicate_check)
+int efivar_scan(struct super_block *sb, bool duplicate_check)
 {
 	unsigned long variable_name_size = 512;
 	efi_char16_t *variable_name;
@@ -407,8 +405,8 @@ int efivar_init(int (*func)(efi_char16_t *, efi_guid_t, unsigned long, void *),
 		case EFI_SUCCESS:
 			variable_name_size = var_name_strnsize(variable_name,
 							       variable_name_size);
-			err = func(variable_name, vendor_guid,
-				   variable_name_size, data);
+			err = efivarfs_add(variable_name, vendor_guid,
+					   variable_name_size, sb);
 
 			/*
 			 * Some firmware implementations return the
