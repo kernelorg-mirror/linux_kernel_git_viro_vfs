@@ -284,7 +284,7 @@ void putname(struct filename *name)
 		return;
 
 	refcnt = atomic_read(&name->refcnt);
-	if (refcnt != 1) {
+	if (unlikely(refcnt != 1)) {
 		if (WARN_ON_ONCE(!refcnt))
 			return;
 
@@ -292,7 +292,7 @@ void putname(struct filename *name)
 			return;
 	}
 
-	if (name->name != name->iname) {
+	if (unlikely(name->name != name->iname)) {
 		__putname(name->name);
 		kfree(name);
 	} else
