@@ -2934,6 +2934,16 @@ static inline struct filename *getname_maybe_null(const char __user *name, int f
 extern void putname(struct filename *name);
 DEFINE_FREE(putname, struct filename *, if (!IS_ERR_OR_NULL(_T)) putname(_T))
 
+struct delayed_filename {
+	struct filename *__incomplete_filename;	// don't touch
+};
+#define INIT_DELAYED_FILENAME(ptr) \
+	((void)(*(ptr) = (struct delayed_filename){}))
+int delayed_getname(struct delayed_filename *, const char __user *);
+int delayed_getname_uflags(struct delayed_filename *v, const char __user *, int);
+void dismiss_delayed_filename(struct delayed_filename *);
+struct filename *complete_getname(struct delayed_filename *);
+
 static inline struct filename *refname(struct filename *name)
 {
 	atomic_inc(&name->refcnt);
