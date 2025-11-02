@@ -2835,7 +2835,7 @@ extern struct kobject *fs_kobj;
 struct audit_names;
 struct filename {
 	const char		*name;	/* pointer to actual string */
-	atomic_t		refcnt;
+	int			refcnt;
 	struct audit_names	*aname;
 	const char		iname[];
 };
@@ -2943,12 +2943,6 @@ int delayed_getname(struct delayed_filename *, const char __user *);
 int delayed_getname_uflags(struct delayed_filename *v, const char __user *, int);
 void dismiss_delayed_filename(struct delayed_filename *);
 struct filename *complete_getname(struct delayed_filename *);
-
-static inline struct filename *refname(struct filename *name)
-{
-	atomic_inc(&name->refcnt);
-	return name;
-}
 
 extern int finish_open(struct file *file, struct dentry *dentry,
 			int (*open)(struct inode *, struct file *));
