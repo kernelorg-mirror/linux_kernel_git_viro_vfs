@@ -2169,6 +2169,12 @@ static struct audit_names *audit_alloc_name(struct audit_context *context,
 	return aname;
 }
 
+static inline struct filename *refname(struct filename *name)
+{
+	name->refcnt++;
+	return name;
+}
+
 /**
  * __audit_getname - add a name to the list
  * @name: name to add
