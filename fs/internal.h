@@ -68,6 +68,8 @@ int vfs_tmpfile(struct mnt_idmap *idmap,
 		struct file *file, umode_t mode);
 struct dentry *d_hash_and_lookup(struct dentry *, struct qstr *);
 
+void __init filename_init(void);
+
 /*
  * namespace.c
  */
