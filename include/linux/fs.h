@@ -2833,11 +2833,13 @@ extern struct kobject *fs_kobj;
 
 /* fs/open.c */
 struct audit_names;
+
+#define EMBEDDED_NAME_MAX	128
 struct filename {
 	const char		*name;	/* pointer to actual string */
 	atomic_t		refcnt;
 	struct audit_names	*aname;
-	const char		iname[];
+	const char		iname[EMBEDDED_NAME_MAX];
 };
 static_assert(offsetof(struct filename, iname) % sizeof(long) == 0);
 
