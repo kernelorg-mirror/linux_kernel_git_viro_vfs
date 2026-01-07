@@ -5541,10 +5541,8 @@ int vfs_symlink(struct mnt_idmap *idmap, struct inode *dir,
 }
 EXPORT_SYMBOL(vfs_symlink);
 
-int do_symlinkat(struct filename *__from, int newdfd, struct filename *__to)
+int filename_symlinkat(struct filename *from, int newdfd, struct filename *to)
 {
-	CLASS(filename_consume, from)(__from);
-	CLASS(filename_consume, to)(__to);
 	int error;
 	struct dentry *dentry;
 	struct path path;
@@ -5578,12 +5576,16 @@ retry:
 SYSCALL_DEFINE3(symlinkat, const char __user *, oldname,
 		int, newdfd, const char __user *, newname)
 {
-	return do_symlinkat(getname(oldname), newdfd, getname(newname));
+	CLASS(filename, old)(oldname);
+	CLASS(filename, new)(newname);
+	return filename_symlinkat(old, newdfd, new);
 }
 
 SYSCALL_DEFINE2(symlink, const char __user *, oldname, const char __user *, newname)
 {
-	return do_symlinkat(getname(oldname), AT_FDCWD, getname(newname));
+	CLASS(filename, old)(oldname);
+	CLASS(filename, new)(newname);
+	return filename_symlinkat(old, AT_FDCWD, new);
 }
 
 /**
