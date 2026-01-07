@@ -5278,9 +5278,8 @@ out:
 }
 EXPORT_SYMBOL(vfs_rmdir);
 
-int do_rmdir(int dfd, struct filename *__name)
+int filename_rmdir(int dfd, struct filename *name)
 {
-	CLASS(filename_consume, name)(__name);
 	int error;
 	struct dentry *dentry;
 	struct path path;
@@ -5338,7 +5337,8 @@ exit2:
 
 SYSCALL_DEFINE1(rmdir, const char __user *, pathname)
 {
-	return do_rmdir(AT_FDCWD, getname(pathname));
+	CLASS(filename, name)(pathname);
+	return filename_rmdir(AT_FDCWD, name);
 }
 
 /**
@@ -5420,9 +5420,8 @@ EXPORT_SYMBOL(vfs_unlink);
  * writeout happening, and we don't want to prevent access to the directory
  * while waiting on the I/O.
  */
-int do_unlinkat(int dfd, struct filename *__name)
+int filename_unlinkat(int dfd, struct filename *name)
 {
-	CLASS(filename_consume, name)(__name);
 	int error;
 	struct dentry *dentry;
 	struct path path;
@@ -5489,14 +5488,16 @@ SYSCALL_DEFINE3(unlinkat, int, dfd, const char __user *, pathname, int, flag)
 	if ((flag & ~AT_REMOVEDIR) != 0)
 		return -EINVAL;
 
+	CLASS(filename, name)(pathname);
 	if (flag & AT_REMOVEDIR)
-		return do_rmdir(dfd, getname(pathname));
-	return do_unlinkat(dfd, getname(pathname));
+		return filename_rmdir(dfd, name);
+	return filename_unlinkat(dfd, name);
 }
 
 SYSCALL_DEFINE1(unlink, const char __user *, pathname)
 {
-	return do_unlinkat(AT_FDCWD, getname(pathname));
+	CLASS(filename, name)(pathname);
+	return filename_unlinkat(AT_FDCWD, name);
 }
 
 /**
