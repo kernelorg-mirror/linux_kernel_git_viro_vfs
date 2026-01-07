@@ -5171,9 +5171,8 @@ err:
 }
 EXPORT_SYMBOL(vfs_mkdir);
 
-int do_mkdirat(int dfd, struct filename *__name, umode_t mode)
+int filename_mkdirat(int dfd, struct filename *name, umode_t mode)
 {
-	CLASS(filename_consume, name)(__name);
 	struct dentry *dentry;
 	struct path path;
 	int error;
@@ -5208,12 +5207,14 @@ retry:
 
 SYSCALL_DEFINE3(mkdirat, int, dfd, const char __user *, pathname, umode_t, mode)
 {
-	return do_mkdirat(dfd, getname(pathname), mode);
+	CLASS(filename, name)(pathname);
+	return filename_mkdirat(dfd, name, mode);
 }
 
 SYSCALL_DEFINE2(mkdir, const char __user *, pathname, umode_t, mode)
 {
-	return do_mkdirat(AT_FDCWD, getname(pathname), mode);
+	CLASS(filename, name)(pathname);
+	return filename_mkdirat(AT_FDCWD, name, mode);
 }
 
 /**
