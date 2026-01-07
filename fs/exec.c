@@ -1775,12 +1775,11 @@ out:
 	return retval;
 }
 
-static int do_execveat_common(int fd, struct filename *__filename,
+static int do_execveat_common(int fd, struct filename *filename,
 			      struct user_arg_ptr argv,
 			      struct user_arg_ptr envp,
 			      int flags)
 {
-	CLASS(filename_consume, filename)(__filename);
 	int retval;
 
 	/*
@@ -1927,7 +1926,8 @@ SYSCALL_DEFINE3(execve,
 		const char __user *const __user *, argv,
 		const char __user *const __user *, envp)
 {
-	return do_execveat_common(AT_FDCWD, getname(filename),
+	CLASS(filename, name)(filename);
+	return do_execveat_common(AT_FDCWD, name,
 				  native_arg(argv), native_arg(envp), 0);
 }
 
@@ -1937,7 +1937,8 @@ SYSCALL_DEFINE5(execveat,
 		const char __user *const __user *, envp,
 		int, flags)
 {
-	return do_execveat_common(fd, getname_uflags(filename, flags),
+	CLASS(filename_uflags, name)(filename, flags);
+	return do_execveat_common(fd, name,
 				  native_arg(argv), native_arg(envp), flags);
 }
 
@@ -1952,7 +1953,8 @@ COMPAT_SYSCALL_DEFINE3(execve, const char __user *, filename,
 	const compat_uptr_t __user *, argv,
 	const compat_uptr_t __user *, envp)
 {
-	return do_execveat_common(AT_FDCWD, getname(filename),
+	CLASS(filename, name)(filename);
+	return do_execveat_common(AT_FDCWD, name,
 				  compat_arg(argv), compat_arg(envp), 0);
 }
 
@@ -1962,7 +1964,8 @@ COMPAT_SYSCALL_DEFINE5(execveat, int, fd,
 		       const compat_uptr_t __user *, envp,
 		       int,  flags)
 {
-	return do_execveat_common(fd, getname_uflags(filename, flags),
+	CLASS(filename_uflags, name)(filename, flags);
+	return do_execveat_common(fd, name,
 				  compat_arg(argv), compat_arg(envp), flags);
 }
 #endif
