@@ -5038,10 +5038,9 @@ static int may_mknod(umode_t mode)
 	}
 }
 
-int do_mknodat(int dfd, struct filename *__name, umode_t mode,
-		unsigned int dev)
+int filename_mknodat(int dfd, struct filename *name, umode_t mode,
+		     unsigned int dev)
 {
-	CLASS(filename_consume, name)(__name);
 	struct delegated_inode di = { };
 	struct mnt_idmap *idmap;
 	struct dentry *dentry;
@@ -5095,12 +5094,14 @@ out2:
 SYSCALL_DEFINE4(mknodat, int, dfd, const char __user *, filename, umode_t, mode,
 		unsigned int, dev)
 {
-	return do_mknodat(dfd, getname(filename), mode, dev);
+	CLASS(filename, name)(filename);
+	return filename_mknodat(dfd, name, mode, dev);
 }
 
 SYSCALL_DEFINE3(mknod, const char __user *, filename, umode_t, mode, unsigned, dev)
 {
-	return do_mknodat(AT_FDCWD, getname(filename), mode, dev);
+	CLASS(filename, name)(filename);
+	return filename_mknodat(AT_FDCWD, name, mode, dev);
 }
 
 /**
