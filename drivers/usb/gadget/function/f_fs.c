@@ -641,12 +641,21 @@ done_mutex:
 static int ffs_ep0_open(struct inode *inode, struct file *file)
 {
 	struct ffs_data *ffs = inode->i_sb->s_fs_info;
+	int ret;
 
-	if (ffs->state == FFS_CLOSING)
+	/* Acquire mutex */
+	ret = ffs_mutex_lock(&ffs->mutex, file->f_flags & O_NONBLOCK);
+	if (ret < 0)
+		return ret;
+
+	if (ffs->state == FFS_CLOSING) {
+		mutex_unlock(&ffs->mutex);
 		return -EBUSY;
+	}
 
-	file->private_data = ffs;
 	ffs_data_opened(ffs);
+	mutex_unlock(&ffs->mutex);
+	file->private_data = ffs;
 
 	return stream_open(inode, file);
 }
