@@ -648,12 +648,12 @@ static int ffs_ep0_open(struct inode *inode, struct file *file)
 	if (ret < 0)
 		return ret;
 
+	ffs_data_opened(ffs);
 	if (ffs->state == FFS_CLOSING) {
 		mutex_unlock(&ffs->mutex);
+		ffs_data_closed(ffs);
 		return -EBUSY;
 	}
-
-	ffs_data_opened(ffs);
 	mutex_unlock(&ffs->mutex);
 	file->private_data = ffs;
 
