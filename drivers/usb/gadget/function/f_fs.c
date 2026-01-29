@@ -1211,12 +1211,16 @@ ffs_epfile_open(struct inode *inode, struct file *file)
 	if (ret < 0)
 		return ret;
 
-	epfile = inode->i_private;
-	if (WARN_ON(ffs->state != FFS_ACTIVE)) {
+	if (!atomic_inc_not_zero(&ffs->opened)) {
 		mutex_unlock(&ffs->mutex);
 		return -ENODEV;
 	}
-	atomic_inc(&ffs->opened);
+	epfile = inode->i_private;
+	if (WARN_ON(ffs->state != FFS_ACTIVE)) {
+		mutex_unlock(&ffs->mutex);
+		ffs_data_closed(ffs);
+		return -ENODEV;
+	}
 
 	mutex_unlock(&ffs->mutex);
 
