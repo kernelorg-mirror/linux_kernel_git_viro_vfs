@@ -640,7 +640,7 @@ done_mutex:
 
 static int ffs_ep0_open(struct inode *inode, struct file *file)
 {
-	struct ffs_data *ffs = inode->i_private;
+	struct ffs_data *ffs = inode->i_sb->s_fs_info;
 
 	if (ffs->state == FFS_CLOSING)
 		return -EBUSY;
