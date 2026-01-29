@@ -1216,7 +1216,7 @@ ffs_epfile_open(struct inode *inode, struct file *file)
 		mutex_unlock(&ffs->mutex);
 		return -ENODEV;
 	}
-	ffs_data_opened(ffs);
+	atomic_inc(&ffs->opened);
 
 	mutex_unlock(&ffs->mutex);
 
