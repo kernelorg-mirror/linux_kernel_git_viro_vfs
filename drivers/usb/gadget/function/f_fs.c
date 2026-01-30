@@ -650,8 +650,8 @@ static int ffs_ep0_open(struct inode *inode, struct file *file)
 
 	ffs_data_opened(ffs);
 	if (ffs->state == FFS_CLOSING) {
-		mutex_unlock(&ffs->mutex);
 		ffs_data_closed(ffs);
+		mutex_unlock(&ffs->mutex);
 		return -EBUSY;
 	}
 	mutex_unlock(&ffs->mutex);
