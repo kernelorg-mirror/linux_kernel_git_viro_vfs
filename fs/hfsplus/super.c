@@ -557,26 +557,23 @@ static int hfsplus_fill_super(struct super_block *sb, struct fs_context *fc)
 		err = -ENOMEM;
 		goto out_put_alloc_file;
 	}
+	/* from that point on we just return an error on failure */
 
 	str.len = sizeof(HFSP_HIDDENDIR_NAME) - 1;
 	str.name = HFSP_HIDDENDIR_NAME;
 	err = hfs_find_init(sbi->cat_tree, &fd);
 	if (err)
-		goto out_put_root;
+		return err;
 	err = hfsplus_cat_build_key(sb, fd.search_key, HFSPLUS_ROOT_CNID, &str);
 	if (unlikely(err < 0))
-		goto out_put_root;
+		return err;
 	if (!hfs_brec_read(&fd, &entry, sizeof(entry))) {
 		hfs_find_exit(&fd);
-		if (entry.type != cpu_to_be16(HFSPLUS_FOLDER)) {
-			err = -EIO;
-			goto out_put_root;
-		}
+		if (entry.type != cpu_to_be16(HFSPLUS_FOLDER))
+			return -EIO;
 		inode = hfsplus_iget(sb, be32_to_cpu(entry.folder.id));
-		if (IS_ERR(inode)) {
-			err = PTR_ERR(inode);
-			goto out_put_root;
-		}
+		if (IS_ERR(inode))
+			return PTR_ERR(inode);
 		sbi->hidden_dir = inode;
 	} else
 		hfs_find_exit(&fd);
@@ -594,14 +591,13 @@ static int hfsplus_fill_super(struct super_block *sb, struct fs_context *fc)
 			sbi->hidden_dir = hfsplus_new_inode(sb, root, S_IFDIR);
 			if (!sbi->hidden_dir) {
 				mutex_unlock(&sbi->vh_mutex);
-				err = -ENOMEM;
-				goto out_put_root;
+				return -ENOMEM;
 			}
 			err = hfsplus_create_cat(sbi->hidden_dir->i_ino, root,
 						 &str, sbi->hidden_dir);
 			if (err) {
 				mutex_unlock(&sbi->vh_mutex);
-				goto out_put_hidden_dir;
+				return err;
 			}
 
 			err = hfsplus_init_security(sbi->hidden_dir,
@@ -616,7 +612,7 @@ static int hfsplus_fill_super(struct super_block *sb, struct fs_context *fc)
 				hfsplus_delete_cat(sbi->hidden_dir->i_ino,
 							root, &str);
 				mutex_unlock(&sbi->vh_mutex);
-				goto out_put_hidden_dir;
+				return err;
 			}
 
 			mutex_unlock(&sbi->vh_mutex);
@@ -627,12 +623,6 @@ static int hfsplus_fill_super(struct super_block *sb, struct fs_context *fc)
 	swap(sbi->nls, nls); // put the real one back
 	return 0;
 
-out_put_hidden_dir:
-	cancel_delayed_work_sync(&sbi->sync_work);
-	iput(sbi->hidden_dir);
-out_put_root:
-	dput(sb->s_root);
-	sb->s_root = NULL;
 out_put_alloc_file:
 	iput(sbi->alloc_file);
 out_close_attr_tree:
