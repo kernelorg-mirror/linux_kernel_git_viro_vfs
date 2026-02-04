@@ -139,32 +139,29 @@ int hfsplus_read_wrapper(struct super_block *sb)
 	u32 blocksize;
 	int error = 0;
 
-	error = -EINVAL;
 	blocksize = sb_min_blocksize(sb, HFSPLUS_SECTOR_SIZE);
 	if (!blocksize)
-		goto out;
+		return -EINVAL;
 
 	sbi->min_io_size = blocksize;
 
 	if (hfsplus_get_last_session(sb, &part_start, &part_size))
-		goto out;
+		return -EINVAL;
 
-	error = -ENOMEM;
 	sbi->s_vhdr_buf = kmalloc(hfsplus_min_io_size(sb), GFP_KERNEL);
 	if (!sbi->s_vhdr_buf)
-		goto out;
+		return -ENOMEM;
 	sbi->s_backup_vhdr_buf = kmalloc(hfsplus_min_io_size(sb), GFP_KERNEL);
 	if (!sbi->s_backup_vhdr_buf)
-		goto out_free_vhdr;
+		return -ENOMEM;
 
 reread:
 	error = hfsplus_submit_bio(sb, part_start + HFSPLUS_VOLHEAD_SECTOR,
 				   sbi->s_vhdr_buf, (void **)&sbi->s_vhdr,
 				   REQ_OP_READ);
 	if (error)
-		goto out_free_backup_vhdr;
+		return error;
 
-	error = -EINVAL;
 	switch (sbi->s_vhdr->signature) {
 	case cpu_to_be16(HFSPLUS_VOLHEAD_SIGX):
 		set_bit(HFSPLUS_SB_HFSX, &sbi->flags);
@@ -173,7 +170,7 @@ reread:
 		break;
 	case cpu_to_be16(HFSP_WRAP_MAGIC):
 		if (!hfsplus_read_mdb(sbi->s_vhdr, &wd))
-			goto out_free_backup_vhdr;
+			return -EINVAL;
 		wd.ablk_size >>= HFSPLUS_SECTOR_SHIFT;
 		part_start += (sector_t)wd.ablk_start +
 			       (sector_t)wd.embed_start * wd.ablk_size;
@@ -186,7 +183,7 @@ reread:
 		 * (should do this only for cdrom/loop though)
 		 */
 		if (hfs_part_find(sb, &part_start, &part_size))
-			goto out_free_backup_vhdr;
+			return -EINVAL;
 		goto reread;
 	}
 
@@ -194,12 +191,11 @@ reread:
 				   sbi->s_backup_vhdr_buf,
 				   (void **)&sbi->s_backup_vhdr, REQ_OP_READ);
 	if (error)
-		goto out_free_backup_vhdr;
+		return error;
 
-	error = -EINVAL;
 	if (sbi->s_backup_vhdr->signature != sbi->s_vhdr->signature) {
 		pr_warn("invalid secondary volume header\n");
-		goto out_free_backup_vhdr;
+		return -EINVAL;
 	}
 
 	blocksize = be32_to_cpu(sbi->s_vhdr->blocksize);
@@ -208,7 +204,7 @@ reread:
 	 * Block size must be at least as large as a sector and a multiple of 2.
 	 */
 	if (blocksize < HFSPLUS_SECTOR_SIZE || ((blocksize - 1) & blocksize))
-		goto out_free_backup_vhdr;
+		return -EINVAL;
 	sbi->alloc_blksz = blocksize;
 	sbi->alloc_blksz_shift = ilog2(blocksize);
 	blocksize = min_t(u32, sbi->alloc_blksz, PAGE_SIZE);
@@ -221,7 +217,7 @@ reread:
 
 	if (sb_set_blocksize(sb, blocksize) != blocksize) {
 		pr_err("unable to set blocksize to %u!\n", blocksize);
-		goto out_free_backup_vhdr;
+		return -EINVAL;
 	}
 
 	sbi->blockoffset =
@@ -230,11 +226,4 @@ reread:
 	sbi->sect_count = part_size;
 	sbi->fs_shift = sbi->alloc_blksz_shift - sb->s_blocksize_bits;
 	return 0;
-
-out_free_backup_vhdr:
-	kfree(sbi->s_backup_vhdr_buf);
-out_free_vhdr:
-	kfree(sbi->s_vhdr_buf);
-out:
-	return error;
 }

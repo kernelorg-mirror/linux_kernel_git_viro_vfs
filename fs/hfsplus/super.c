@@ -348,8 +348,6 @@ static void hfsplus_put_super(struct super_block *sb)
 	hfs_btree_close(sbi->attr_tree);
 	hfs_btree_close(sbi->cat_tree);
 	hfs_btree_close(sbi->ext_tree);
-	kfree(sbi->s_vhdr_buf);
-	kfree(sbi->s_backup_vhdr_buf);
 	hfs_dbg("finished\n");
 }
 
@@ -471,7 +469,7 @@ static int hfsplus_fill_super(struct super_block *sb, struct fs_context *fc)
 	if (be16_to_cpu(vhdr->version) < HFSPLUS_MIN_VERSION ||
 	    be16_to_cpu(vhdr->version) > HFSPLUS_CURRENT_VERSION) {
 		pr_err("wrong filesystem version\n");
-		goto out_free_vhdr;
+		goto out_unload_nls;
 	}
 	sbi->total_blocks = be32_to_cpu(vhdr->total_blocks);
 	sbi->free_blocks = be32_to_cpu(vhdr->free_blocks);
@@ -495,7 +493,7 @@ static int hfsplus_fill_super(struct super_block *sb, struct fs_context *fc)
 	if ((last_fs_block > (sector_t)(~0ULL) >> (sbi->alloc_blksz_shift - 9)) ||
 	    (last_fs_page > (pgoff_t)(~0ULL))) {
 		pr_err("filesystem size too large\n");
-		goto out_free_vhdr;
+		goto out_unload_nls;
 	}
 
 	/* Set up operations so we can load metadata */
@@ -522,7 +520,7 @@ static int hfsplus_fill_super(struct super_block *sb, struct fs_context *fc)
 	sbi->ext_tree = hfs_btree_open(sb, HFSPLUS_EXT_CNID);
 	if (!sbi->ext_tree) {
 		pr_err("failed to load extents file\n");
-		goto out_free_vhdr;
+		goto out_unload_nls;
 	}
 	sbi->cat_tree = hfs_btree_open(sb, HFSPLUS_CAT_CNID);
 	if (!sbi->cat_tree) {
@@ -648,9 +646,6 @@ out_close_cat_tree:
 	hfs_btree_close(sbi->cat_tree);
 out_close_ext_tree:
 	hfs_btree_close(sbi->ext_tree);
-out_free_vhdr:
-	kfree(sbi->s_vhdr_buf);
-	kfree(sbi->s_backup_vhdr_buf);
 out_unload_nls:
 	unload_nls(nls);
 	return err;
@@ -716,6 +711,8 @@ static void hfsplus_kill_super(struct super_block *sb)
 	struct hfsplus_sb_info *sbi = HFSPLUS_SB(sb);
 
 	kill_block_super(sb);
+	kfree(sbi->s_vhdr_buf);
+	kfree(sbi->s_backup_vhdr_buf);
 	call_rcu(&sbi->rcu, delayed_free);
 }
 
