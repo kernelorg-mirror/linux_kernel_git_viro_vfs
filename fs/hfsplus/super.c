@@ -430,7 +430,7 @@ static int hfsplus_fill_super(struct super_block *sb, struct fs_context *fc)
 	struct hfs_find_data fd;
 	struct inode *root, *inode;
 	struct qstr str;
-	struct nls_table *nls;
+	struct nls_table *nls __free(unload_nls) = NULL;
 	u64 last_fs_block, last_fs_page;
 	int silent = fc->sb_flags & SB_SILENT;
 	int err;
@@ -440,7 +440,6 @@ static int hfsplus_fill_super(struct super_block *sb, struct fs_context *fc)
 	spin_lock_init(&sbi->work_lock);
 	INIT_DELAYED_WORK(&sbi->sync_work, delayed_sync_fs);
 
-	err = -EINVAL;
 	if (!sbi->nls) {
 		/* try utf8 first, as this is the old default behaviour */
 		sbi->nls = load_nls("utf8");
@@ -453,14 +452,14 @@ static int hfsplus_fill_super(struct super_block *sb, struct fs_context *fc)
 	sbi->nls = load_nls("utf8");
 	if (!sbi->nls) {
 		pr_err("unable to load nls for utf8\n");
-		goto out_unload_nls;
+		return -EINVAL;
 	}
 
 	/* Grab the volume header */
 	if (hfsplus_read_wrapper(sb)) {
 		if (!silent)
 			pr_warn("unable to find HFS+ superblock\n");
-		goto out_unload_nls;
+		return -EINVAL;
 	}
 	vhdr = sbi->s_vhdr;
 
@@ -469,7 +468,7 @@ static int hfsplus_fill_super(struct super_block *sb, struct fs_context *fc)
 	if (be16_to_cpu(vhdr->version) < HFSPLUS_MIN_VERSION ||
 	    be16_to_cpu(vhdr->version) > HFSPLUS_CURRENT_VERSION) {
 		pr_err("wrong filesystem version\n");
-		goto out_unload_nls;
+		return -EINVAL;
 	}
 	sbi->total_blocks = be32_to_cpu(vhdr->total_blocks);
 	sbi->free_blocks = be32_to_cpu(vhdr->free_blocks);
@@ -485,7 +484,6 @@ static int hfsplus_fill_super(struct super_block *sb, struct fs_context *fc)
 	if (!sbi->rsrc_clump_blocks)
 		sbi->rsrc_clump_blocks = 1;
 
-	err = -EFBIG;
 	last_fs_block = sbi->total_blocks - 1;
 	last_fs_page = (last_fs_block << sbi->alloc_blksz_shift) >>
 			PAGE_SHIFT;
@@ -493,7 +491,7 @@ static int hfsplus_fill_super(struct super_block *sb, struct fs_context *fc)
 	if ((last_fs_block > (sector_t)(~0ULL) >> (sbi->alloc_blksz_shift - 9)) ||
 	    (last_fs_page > (pgoff_t)(~0ULL))) {
 		pr_err("filesystem size too large\n");
-		goto out_unload_nls;
+		return -EFBIG;
 	}
 
 	/* Set up operations so we can load metadata */
@@ -514,14 +512,13 @@ static int hfsplus_fill_super(struct super_block *sb, struct fs_context *fc)
 		sb->s_flags |= SB_RDONLY;
 	}
 
-	err = -EINVAL;
-
 	/* Load metadata objects (B*Trees) */
 	sbi->ext_tree = hfs_btree_open(sb, HFSPLUS_EXT_CNID);
 	if (!sbi->ext_tree) {
 		pr_err("failed to load extents file\n");
-		goto out_unload_nls;
+		return -EINVAL;
 	}
+	err = -EINVAL;
 	sbi->cat_tree = hfs_btree_open(sb, HFSPLUS_CAT_CNID);
 	if (!sbi->cat_tree) {
 		pr_err("failed to load catalog file\n");
@@ -627,9 +624,7 @@ static int hfsplus_fill_super(struct super_block *sb, struct fs_context *fc)
 						 HFSPLUS_I_CAT_DIRTY);
 		}
 	}
-
-	unload_nls(sbi->nls);
-	sbi->nls = nls;
+	swap(sbi->nls, nls); // put the real one back
 	return 0;
 
 out_put_hidden_dir:
@@ -646,8 +641,6 @@ out_close_cat_tree:
 	hfs_btree_close(sbi->cat_tree);
 out_close_ext_tree:
 	hfs_btree_close(sbi->ext_tree);
-out_unload_nls:
-	unload_nls(nls);
 	return err;
 }
 
