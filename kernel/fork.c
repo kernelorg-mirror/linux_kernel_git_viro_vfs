@@ -1605,9 +1605,9 @@ static int copy_fs(u64 clone_flags, struct task_struct *tsk)
 		read_sequnlock_excl(&fs->seq);
 		return 0;
 	}
-	tsk->fs = copy_fs_struct(fs);
-	if (!tsk->fs)
-		return -ENOMEM;
+	tsk->fs = alloc_fs_struct();
+	if (IS_ERR(tsk->fs))
+		return PTR_ERR(tsk->fs);
 	return 0;
 }
 
@@ -2406,6 +2406,13 @@ __latent_entropy struct task_struct *copy_process(
 
 	/* No more failure paths after this point. */
 
+	/* now we have exclusion with chroot_fs_refs() */
+	if ((clone_flags & CLONE_FS) && !(clone_flags & CLONE_NEWNS)) {
+		read_seqlock_excl(&current->fs->seq);
+		__copy_fs_struct(current->fs, p->fs);
+		read_sequnlock_excl(&current->fs->seq);
+	}
+
 	/*
 	 * Copy seccomp details explicitly here, in case they were changed
 	 * before holding sighand lock.
@@ -3088,9 +3095,9 @@ static int unshare_fs(unsigned long unshare_flags, struct fs_struct **new_fsp)
 	if (!(unshare_flags & CLONE_NEWNS) && fs->users == 1)
 		return 0;
 
-	*new_fsp = copy_fs_struct(fs);
-	if (!*new_fsp)
-		return -ENOMEM;
+	*new_fsp = alloc_fs_struct();
+	if (IS_ERR(*new_fsp))
+		return PTR_ERR(*new_fsp);
 
 	return 0;
 }
@@ -3203,6 +3210,8 @@ int ksys_unshare(unsigned long unshare_flags)
 		if (new_fs) {
 			fs = current->fs;
 			read_seqlock_excl(&fs->seq);
+			if (!(unshare_flags & CLONE_NEWNS))
+				__copy_fs_struct(fs, new_fs);
 			current->fs = new_fs;
 			if (--fs->users)
 				new_fs = NULL;

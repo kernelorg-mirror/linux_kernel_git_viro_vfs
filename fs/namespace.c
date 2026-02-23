@@ -4269,23 +4269,26 @@ struct mnt_namespace *copy_mnt_ns(u64 flags, struct mnt_namespace *ns,
 
 	/*
 	 * Second pass: switch the tsk->fs->* elements and mark new vfsmounts
-	 * as belonging to new namespace.  We have already acquired a private
-	 * fs_struct, so tsk->fs->lock is not needed.
+	 * as belonging to new namespace.  new_fs is empty and visible only
+	 * to us; chroot_fs_refs() can't race with us under drop namespace_sem,
+	 * and after we drop it nothing is going to see the new namespace
+	 * until new_fs gets attached to running process.
 	 */
+	read_seqlock_excl(&current->fs->seq);
+	__copy_fs_struct(current->fs, new_fs);
+	read_sequnlock_excl(&current->fs->seq);
 	p = old;
 	q = new;
 	while (p) {
 		mnt_add_to_ns(new_ns, q);
 		new_ns->nr_mounts++;
-		if (new_fs) {
-			if (&p->mnt == new_fs->root.mnt) {
-				new_fs->root.mnt = mntget(&q->mnt);
-				rootmnt = &p->mnt;
-			}
-			if (&p->mnt == new_fs->pwd.mnt) {
-				new_fs->pwd.mnt = mntget(&q->mnt);
-				pwdmnt = &p->mnt;
-			}
+		if (&p->mnt == new_fs->root.mnt) {
+			new_fs->root.mnt = mntget(&q->mnt);
+			rootmnt = &p->mnt;
+		}
+		if (&p->mnt == new_fs->pwd.mnt) {
+			new_fs->pwd.mnt = mntget(&q->mnt);
+			pwdmnt = &p->mnt;
 		}
 		p = next_mnt(p, old);
 		q = next_mnt(q, new);
