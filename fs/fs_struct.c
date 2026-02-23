@@ -140,14 +140,15 @@ struct fs_struct *copy_fs_struct(struct fs_struct *old)
 int unshare_fs_struct(void)
 {
 	struct fs_struct *fs = current->fs;
-	struct fs_struct *new_fs = copy_fs_struct(fs);
-	int kill;
+	struct fs_struct *new_fs = alloc_fs_struct();
+	bool kill;
 
-	if (!new_fs)
-		return -ENOMEM;
+	if (IS_ERR(new_fs))
+		return PTR_ERR(new_fs);
 
 	task_lock(current);
 	read_seqlock_excl(&fs->seq);
+	__copy_fs_struct(fs, new_fs);
 	kill = !--fs->users;
 	current->fs = new_fs;
 	read_sequnlock_excl(&fs->seq);
