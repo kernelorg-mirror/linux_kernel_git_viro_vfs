@@ -104,23 +104,36 @@ void exit_fs(struct task_struct *tsk)
 	}
 }
 
+struct fs_struct *alloc_fs_struct(void)
+{
+	struct fs_struct *fs = kmem_cache_zalloc(fs_cachep, GFP_KERNEL);
+
+	if (unlikely(!fs))
+		return ERR_PTR(-ENOMEM);
+	fs->users = 1;
+	seqlock_init(&fs->seq);
+	return fs;
+}
+
+void __copy_fs_struct(struct fs_struct *old, struct fs_struct *empty)
+{
+	empty->umask = old->umask;
+	empty->root = old->root;
+	path_get(&empty->root);
+	empty->pwd = old->pwd;
+	path_get(&empty->pwd);
+}
+
 struct fs_struct *copy_fs_struct(struct fs_struct *old)
 {
-	struct fs_struct *fs = kmem_cache_alloc(fs_cachep, GFP_KERNEL);
-	/* We don't need to lock fs - think why ;-) */
-	if (fs) {
-		fs->users = 1;
-		fs->in_exec = 0;
-		seqlock_init(&fs->seq);
-		fs->umask = old->umask;
+	struct fs_struct *fs = alloc_fs_struct();
 
-		read_seqlock_excl(&old->seq);
-		fs->root = old->root;
-		path_get(&fs->root);
-		fs->pwd = old->pwd;
-		path_get(&fs->pwd);
-		read_sequnlock_excl(&old->seq);
-	}
+	if (IS_ERR(fs))
+		return NULL;	// preserve the calling conventions for now
+
+	read_seqlock_excl(&old->seq);
+	__copy_fs_struct(old, fs);
+	read_sequnlock_excl(&old->seq);
 	return fs;
 }
 
