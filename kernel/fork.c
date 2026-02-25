@@ -3084,22 +3084,16 @@ static int check_unshare_flags(unsigned long unshare_flags)
 /*
  * Unshare the filesystem structure if it is being shared
  */
-static int unshare_fs(unsigned long unshare_flags, struct fs_struct **new_fsp)
+static struct fs_struct *unshare_fs(unsigned long unshare_flags)
 {
-	struct fs_struct *fs = current->fs;
-
-	if (!(unshare_flags & CLONE_FS) || !fs)
-		return 0;
+	if (!(unshare_flags & CLONE_FS))
+		return NULL;
 
 	/* don't need lock here; in the worst case we'll do useless copy */
-	if (!(unshare_flags & CLONE_NEWNS) && fs->users == 1)
-		return 0;
+	if (!(unshare_flags & CLONE_NEWNS) && current->fs->users == 1)
+		return NULL;
 
-	*new_fsp = alloc_fs_struct();
-	if (IS_ERR(*new_fsp))
-		return PTR_ERR(*new_fsp);
-
-	return 0;
+	return alloc_fs_struct();
 }
 
 /*
@@ -3161,7 +3155,7 @@ int ksys_unshare(unsigned long unshare_flags)
 
 	err = check_unshare_flags(unshare_flags);
 	if (err)
-		goto bad_unshare_out;
+		return err;
 	/*
 	 * CLONE_NEWIPC must also detach from the undolist: after switching
 	 * to a new ipc namespace, the semaphore arrays from the old
@@ -3169,9 +3163,9 @@ int ksys_unshare(unsigned long unshare_flags)
 	 */
 	if (unshare_flags & (CLONE_NEWIPC|CLONE_SYSVSEM))
 		do_sysvsem = 1;
-	err = unshare_fs(unshare_flags, &new_fs);
-	if (err)
-		goto bad_unshare_out;
+	new_fs = unshare_fs(unshare_flags);
+	if (IS_ERR(new_fs))
+		return PTR_ERR(new_fs);
 	err = unshare_fd(unshare_flags, &new_fd);
 	if (err)
 		goto bad_unshare_cleanup_fs;
@@ -3244,8 +3238,6 @@ bad_unshare_cleanup_fd:
 bad_unshare_cleanup_fs:
 	if (new_fs)
 		free_fs_struct(new_fs);
-
-bad_unshare_out:
 	return err;
 }
 
