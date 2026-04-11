@@ -763,6 +763,7 @@ static bool lock_for_kill(struct dentry *dentry)
 	if (!inode || likely(spin_trylock(&inode->i_lock)))
 		return true;
 
+	rcu_read_lock();
 	do {
 		spin_unlock(&dentry->d_lock);
 		spin_lock(&inode->i_lock);
@@ -772,6 +773,7 @@ static bool lock_for_kill(struct dentry *dentry)
 		spin_unlock(&inode->i_lock);
 		inode = dentry->d_inode;
 	} while (inode);
+	rcu_read_unlock();
 	if (likely(!dentry->d_lockref.count))
 		return true;
 	if (inode)
@@ -781,13 +783,10 @@ static bool lock_for_kill(struct dentry *dentry)
 
 static struct dentry *dentry_kill(struct dentry *dentry)
 {
-	rcu_read_lock();
 	if (unlikely(!lock_for_kill(dentry))) {
 		spin_unlock(&dentry->d_lock);
-		rcu_read_unlock();
 		return NULL;
 	}
-	rcu_read_unlock();
 	return __dentry_kill(dentry);
 }
 
