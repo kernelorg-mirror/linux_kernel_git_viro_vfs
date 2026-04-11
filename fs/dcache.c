@@ -1619,6 +1619,15 @@ static enum d_walk_ret select_collect2(void *_data, struct dentry *dentry)
 
 	if (dentry->d_lockref.count <= 0) {
 		if (!__move_to_shrink_list(dentry, &data->dispose)) {
+			/*
+			 * We need an enter RCU read-side critical area that
+			 * would extend past the return from d_walk() and
+			 * we are in the scope of ->d_lock that will terminate
+			 * before that, so we use rcu_read_lock() to bridge
+			 * over to the scope of ->d_lock in d_walk() caller.
+			 * The scope of rcu_read_lock() spans from here to
+			 * paired rcu_read_unlock() in shrink_dcache_tree().
+			 */
 			rcu_read_lock();
 			data->victim = dentry;
 			return D_WALK_QUIT;
@@ -1663,8 +1672,20 @@ static void shrink_dcache_tree(struct dentry *parent, bool for_umount)
 		d_walk(parent, &data, select_collect2);
 		if (data.victim) {
 			struct dentry *v = data.victim;
-
+			/*
+			 * select_collect2() has picked a dentry that was
+			 * either dying or on a shrink list and arranged
+			 * for it to be returned to us.  We are still in
+			 * the RCU read-side critical area started there
+			 * (rcu_read_lock() scope opened in select_collect2()),
+			 * so dentry couldn't have been freed yet, but its
+			 * state might've changed since we dropped ->d_lock
+			 * on the way out.  Switch over to ->d_lock scope
+			 * and recheck the dentry state.
+			 */
 			spin_lock(&v->d_lock);
+			rcu_read_unlock();
+
 			if (v->d_lockref.count < 0 &&
 			    !(v->d_flags & DCACHE_DENTRY_KILLED)) {
 				struct completion_list wait;
@@ -1672,13 +1693,11 @@ static void shrink_dcache_tree(struct dentry *parent, bool for_umount)
 				// it becomes invisible to d_walk().
 				d_add_waiter(v, &wait);
 				spin_unlock(&v->d_lock);
-				rcu_read_unlock();
 				if (!list_empty(&data.dispose))
 					shrink_dentry_list(&data.dispose);
 				wait_for_completion(&wait.completion);
 				continue;
 			}
-			rcu_read_unlock();
 			shrink_kill(v);
 		}
 		if (!list_empty(&data.dispose))
