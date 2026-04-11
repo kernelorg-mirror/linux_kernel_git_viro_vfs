@@ -781,6 +781,7 @@ static bool lock_for_kill(struct dentry *dentry)
 
 static struct dentry *dentry_kill(struct dentry *dentry)
 {
+	rcu_read_lock();
 	if (unlikely(!lock_for_kill(dentry))) {
 		spin_unlock(&dentry->d_lock);
 		rcu_read_unlock();
@@ -932,13 +933,11 @@ locked:
 static void finish_dput(struct dentry *dentry)
 	__releases(dentry->d_lock)
 {
-	rcu_read_lock();
 	while ((dentry = dentry_kill(dentry)) != NULL) {
 		if (retain_dentry(dentry, true)) {
 			spin_unlock(&dentry->d_lock);
 			return;
 		}
-		rcu_read_lock();
 	}
 }
 
@@ -1216,9 +1215,8 @@ EXPORT_SYMBOL(d_prune_aliases);
 
 static inline void shrink_kill(struct dentry *victim)
 {
-	rcu_read_lock();
 	while ((victim = dentry_kill(victim)) != NULL)
-		rcu_read_lock();
+		;
 }
 
 void shrink_dentry_list(struct list_head *list)
