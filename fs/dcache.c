@@ -931,8 +931,8 @@ locked:
 
 static void finish_dput(struct dentry *dentry)
 	__releases(dentry->d_lock)
-	__releases(RCU)
 {
+	rcu_read_lock();
 	while ((dentry = dentry_kill(dentry)) != NULL) {
 		if (retain_dentry(dentry, true)) {
 			spin_unlock(&dentry->d_lock);
@@ -979,7 +979,6 @@ void dput(struct dentry *dentry)
 		return;
 	}
 	rcu_read_unlock();
-	rcu_read_lock();
 	finish_dput(dentry);
 }
 EXPORT_SYMBOL(dput);
@@ -990,7 +989,6 @@ void d_make_discardable(struct dentry *dentry)
 	WARN_ON(!(dentry->d_flags & DCACHE_PERSISTENT));
 	dentry->d_flags &= ~DCACHE_PERSISTENT;
 	dentry->d_lockref.count--;
-	rcu_read_lock();
 	finish_dput(dentry);
 }
 EXPORT_SYMBOL(d_make_discardable);
@@ -1197,6 +1195,7 @@ EXPORT_SYMBOL(d_prune_aliases);
 
 static inline void shrink_kill(struct dentry *victim)
 {
+	rcu_read_lock();
 	while ((victim = dentry_kill(victim)) != NULL)
 		rcu_read_lock();
 }
@@ -1214,7 +1213,6 @@ void shrink_dentry_list(struct list_head *list)
 			spin_unlock(&dentry->d_lock);
 			continue;
 		}
-		rcu_read_lock();
 		shrink_kill(dentry);
 	}
 }
@@ -1673,7 +1671,6 @@ static void shrink_dcache_tree(struct dentry *parent, bool for_umount)
 				continue;
 			}
 			rcu_read_unlock();
-			rcu_read_lock();
 			shrink_kill(v);
 		}
 		if (!list_empty(&data.dispose))
