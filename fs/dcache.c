@@ -876,6 +876,7 @@ static inline bool fast_dput(struct dentry *dentry)
 	/*
 	 * try to decrement the lockref optimistically.
 	 */
+	rcu_read_lock();
 	ret = lockref_put_return(&dentry->d_lockref);
 
 	/*
@@ -885,6 +886,7 @@ static inline bool fast_dput(struct dentry *dentry)
 	 */
 	if (unlikely(ret < 0)) {
 		spin_lock(&dentry->d_lock);
+		rcu_read_unlock();
 		if (WARN_ON_ONCE(dentry->d_lockref.count <= 0)) {
 			spin_unlock(&dentry->d_lock);
 			return true;
@@ -896,8 +898,10 @@ static inline bool fast_dput(struct dentry *dentry)
 	/*
 	 * If we weren't the last ref, we're done.
 	 */
-	if (ret)
+	if (ret) {
+		rcu_read_unlock();
 		return true;
+	}
 
 	/*
 	 * Can we decide that decrement of refcount is all we needed without
@@ -905,8 +909,10 @@ static inline bool fast_dput(struct dentry *dentry)
 	 * dentry looks like it ought to be retained and there's nothing else
 	 * to do.
 	 */
-	if (retain_dentry(dentry, false))
+	if (retain_dentry(dentry, false)) {
+		rcu_read_unlock();
 		return true;
+	}
 
 	/*
 	 * Either not worth retaining or we can't tell without the lock.
@@ -914,6 +920,7 @@ static inline bool fast_dput(struct dentry *dentry)
 	 * but we'll need to re-check the situation after getting the lock.
 	 */
 	spin_lock(&dentry->d_lock);
+	rcu_read_unlock();
 
 	/*
 	 * Did somebody else grab a reference to it in the meantime, and
@@ -971,12 +978,8 @@ void dput(struct dentry *dentry)
 	if (!dentry)
 		return;
 	might_sleep();
-	rcu_read_lock();
-	if (likely(fast_dput(dentry))) {
-		rcu_read_unlock();
+	if (likely(fast_dput(dentry)))
 		return;
-	}
-	rcu_read_unlock();
 	finish_dput(dentry);
 }
 EXPORT_SYMBOL(dput);
@@ -1024,12 +1027,8 @@ EXPORT_SYMBOL(__move_to_shrink_list);
 
 void dput_to_list(struct dentry *dentry, struct list_head *list)
 {
-	rcu_read_lock();
-	if (likely(fast_dput(dentry))) {
-		rcu_read_unlock();
+	if (likely(fast_dput(dentry)))
 		return;
-	}
-	rcu_read_unlock();
 	__move_to_shrink_list(dentry, list);
 	spin_unlock(&dentry->d_lock);
 }
