@@ -153,10 +153,9 @@ static void configfs_set_inode_lock_class(struct configfs_dirent *sd,
 
 #endif /* CONFIG_LOCKDEP */
 
-struct inode *configfs_create(struct dentry *dentry, umode_t mode)
+struct inode *configfs_create(struct dentry *dentry, struct configfs_dirent *sd, umode_t mode)
 {
 	struct inode *inode = NULL;
-	struct configfs_dirent *sd;
 
 	if (!dentry)
 		return ERR_PTR(-ENOENT);
@@ -164,7 +163,6 @@ struct inode *configfs_create(struct dentry *dentry, umode_t mode)
 	if (d_really_is_positive(dentry))
 		return ERR_PTR(-EEXIST);
 
-	sd = dentry->d_fsdata;
 	inode = configfs_new_inode(mode, sd, dentry->d_sb);
 	if (!inode)
 		return ERR_PTR(-ENOMEM);

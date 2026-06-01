@@ -447,16 +447,14 @@ const struct file_operations configfs_bin_file_operations = {
 int configfs_create_file(struct config_item * item, const struct configfs_attribute * attr)
 {
 	struct dentry *dir = item->ci_dentry;
-	struct configfs_dirent *parent_sd = dir->d_fsdata;
+	struct configfs_dirent *parent_sd = dir->d_fsdata, *sd;
 	umode_t mode = (attr->ca_mode & S_IALLUGO) | S_IFREG;
-	int error = 0;
 
 	inode_lock_nested(d_inode(dir), I_MUTEX_NORMAL);
-	error = configfs_make_dirent(parent_sd, NULL, (void *) attr, mode,
+	sd = configfs_make_dirent(parent_sd, (void *) attr, mode,
 				     CONFIGFS_ITEM_ATTR, parent_sd->s_frag);
 	inode_unlock(d_inode(dir));
-
-	return error;
+	return PTR_ERR_OR_ZERO(sd);
 }
 
 /**
@@ -469,14 +467,12 @@ int configfs_create_bin_file(struct config_item *item,
 		const struct configfs_bin_attribute *bin_attr)
 {
 	struct dentry *dir = item->ci_dentry;
-	struct configfs_dirent *parent_sd = dir->d_fsdata;
+	struct configfs_dirent *parent_sd = dir->d_fsdata, *sd;
 	umode_t mode = (bin_attr->cb_attr.ca_mode & S_IALLUGO) | S_IFREG;
-	int error = 0;
 
 	inode_lock_nested(dir->d_inode, I_MUTEX_NORMAL);
-	error = configfs_make_dirent(parent_sd, NULL, (void *) bin_attr, mode,
+	sd = configfs_make_dirent(parent_sd, (void *) bin_attr, mode,
 				     CONFIGFS_ITEM_BIN_ATTR, parent_sd->s_frag);
 	inode_unlock(dir->d_inode);
-
-	return error;
+	return PTR_ERR_OR_ZERO(sd);
 }
