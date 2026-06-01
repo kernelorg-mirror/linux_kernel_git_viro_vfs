@@ -405,19 +405,6 @@ static inline void fsnotify_mkdir(struct inode *dir, struct dentry *dentry)
 }
 
 /*
- * fsnotify_rmdir - directory 'name' was removed
- *
- * Caller must make sure that dentry->d_name is stable.
- */
-static inline void fsnotify_rmdir(struct inode *dir, struct dentry *dentry)
-{
-	if (WARN_ON_ONCE(d_is_negative(dentry)))
-		return;
-
-	fsnotify_delete(dir, d_inode(dentry), dentry);
-}
-
-/*
  * fsnotify_access - file was read
  */
 static inline void fsnotify_access(struct file *file)
