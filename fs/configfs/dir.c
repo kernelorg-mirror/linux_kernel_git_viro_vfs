@@ -268,10 +268,8 @@ int configfs_make_dirent(struct configfs_dirent * parent_sd,
 	return 0;
 }
 
-static void configfs_remove_dirent(struct dentry *dentry)
+static void configfs_remove_dirent(struct configfs_dirent *sd)
 {
-	struct configfs_dirent *sd = dentry->d_fsdata;
-
 	if (!sd)
 		return;
 	spin_lock(&configfs_dirent_lock);
@@ -324,7 +322,7 @@ static int configfs_create_dir(struct config_item *item, struct dentry *dentry,
 
 out_remove:
 	configfs_put(dentry->d_fsdata);
-	configfs_remove_dirent(dentry);
+	configfs_remove_dirent(dentry->d_fsdata);
 	return PTR_ERR(inode);
 }
 
@@ -392,7 +390,7 @@ int configfs_create_link(struct configfs_dirent *target, struct dentry *parent,
 
 out_remove:
 	configfs_put(dentry->d_fsdata);
-	configfs_remove_dirent(dentry);
+	configfs_remove_dirent(dentry->d_fsdata);
 	return PTR_ERR(inode);
 }
 
@@ -411,7 +409,7 @@ static void configfs_remove_dir(struct dentry *d)
 {
 	struct dentry * parent = dget(d->d_parent);
 
-	configfs_remove_dirent(d);
+	configfs_remove_dirent(d->d_fsdata);
 
 	if (d_really_is_positive(d)) {
 		if (unlikely(simple_rmdir(d_inode(parent), d)))
