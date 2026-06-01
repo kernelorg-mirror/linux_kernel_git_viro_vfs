@@ -175,7 +175,7 @@ rpc_close_pipes(struct dentry *dentry)
 	int need_release;
 	LIST_HEAD(free_list);
 
-	inode_lock(inode);
+	inode_lock_nested(inode, I_MUTEX_NONDIR2);
 	spin_lock(&pipe->lock);
 	need_release = pipe->nreaders != 0 || pipe->nwriters != 0;
 	pipe->nreaders = 0;

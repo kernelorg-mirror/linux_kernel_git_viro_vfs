@@ -1385,3 +1385,11 @@ for_each_alias(dentry, inode) instead of hlist_for_each_entry; better
 yet, see if any of the exported primitives could be used instead of
 the entire loop.  You still need to hold ->i_lock of the inode over
 either form of manual loop.
+
+---
+
+**mandatory**
+
+If you are using inode_lock() in {locked,simple}_recursive_removal() callback,
+make it use a I_MUTEX_NONDIR2 as a class.  Only rpcpipe needed that in the
+tree...

@@ -595,56 +595,73 @@ struct dentry *find_next_child(struct dentry *parent, struct dentry *prev)
 }
 EXPORT_SYMBOL(find_next_child);
 
+/*
+ * locked = 2: both the root of subtree to be removed and its parent are locked
+ * locked = 1: only the parent is locked
+ * locked = 0: nothing's locked
+ *
+ * I_MUTEX_XATTR is an abuse; might be better to introduce another level between
+ * nested inside I_MUTEX_NORMAL instead.
+ */
 static void __simple_recursive_removal(struct dentry *dentry,
                               void (*callback)(struct dentry *),
-			      bool locked)
+			      int locked)
 {
 	struct dentry *this = dget(dentry);
+	int depth = 1; // depth of the next victim
+
 	while (true) {
 		struct dentry *victim = NULL, *child;
 		struct inode *inode = this->d_inode;
 
-		inode_lock_nested(inode, I_MUTEX_CHILD);
+		if (depth >= locked)
+			inode_lock_nested(inode, I_MUTEX_XATTR);
 		if (d_is_dir(this))
 			inode->i_flags |= S_DEAD;
 		while ((child = find_next_child(this, victim)) == NULL) {
 			// kill and ascend
 			// update metadata while it's still locked
-			inode_set_ctime_current(inode);
-			clear_nlink(inode);
-			inode_unlock(inode);
+			if (this->d_flags & DCACHE_PERSISTENT) {
+				inode_set_ctime_current(inode);
+				clear_nlink(inode);
+			}
+			if (depth >= locked)
+				inode_unlock(inode);
 			victim = this;
 			this = this->d_parent;
+			depth--;
 			inode = this->d_inode;
-			if (!locked || victim != dentry)
-				inode_lock_nested(inode, I_MUTEX_CHILD);
-			if (simple_positive(victim)) {
+			if (depth >= locked)
+				inode_lock_nested(inode, I_MUTEX_XATTR);
+			if (victim->d_flags & DCACHE_PERSISTENT) {
 				d_invalidate(victim);	// avoid lost mounts
 				if (callback)
 					callback(victim);
 				fsnotify_delete(inode, d_inode(victim), victim);
 				d_make_discardable(victim);
 			}
-			if (victim == dentry) {
+			if (depth == 0) {
 				inode_set_mtime_to_ts(inode,
 						      inode_set_ctime_current(inode));
 				if (d_is_dir(dentry))
 					drop_nlink(inode);
-				if (!locked)
+				if (depth >= locked)
 					inode_unlock(inode);
 				dput(dentry);
 				return;
 			}
 		}
-		inode_unlock(inode);
+		if (depth >= locked)
+			inode_unlock(inode);
 		this = child;
+		depth++;
 	}
 }
 
 void simple_recursive_removal(struct dentry *dentry,
                               void (*callback)(struct dentry *))
 {
-	return __simple_recursive_removal(dentry, callback, false);
+	return __simple_recursive_removal(dentry, callback, 0);
 }
 EXPORT_SYMBOL(simple_recursive_removal);
 
@@ -665,9 +682,17 @@ EXPORT_SYMBOL(simple_remove_by_name);
 void locked_recursive_removal(struct dentry *dentry,
                               void (*callback)(struct dentry *))
 {
-	return __simple_recursive_removal(dentry, callback, true);
+	return __simple_recursive_removal(dentry, callback, 1);
 }
 EXPORT_SYMBOL(locked_recursive_removal);
+
+/* caller holds parent directory and child, same as for ->rmdir() and ->unlink() */
+void both_locked_recursive_removal(struct dentry *dentry,
+                              void (*callback)(struct dentry *))
+{
+	return __simple_recursive_removal(dentry, callback, 2);
+}
+EXPORT_SYMBOL(both_locked_recursive_removal);
 
 static const struct super_operations simple_super_operations = {
 	.statfs		= simple_statfs,
