@@ -1744,6 +1744,8 @@ int configfs_register_group(struct config_group *parent_group,
 	struct configfs_subsystem *subsys = parent_group->cg_subsys;
 	struct dentry *parent;
 	struct configfs_fragment *frag;
+	struct configfs_dirent *sd;
+	struct dentry *child;
 	int ret;
 
 	frag = new_fragment();
@@ -1755,23 +1757,37 @@ int configfs_register_group(struct config_group *parent_group,
 	mutex_unlock(&subsys->su_mutex);
 
 	parent = parent_group->cg_item.ci_dentry;
+	if (!group->cg_item.ci_name)
+		group->cg_item.ci_name = group->cg_item.ci_namebuf;
 
 	inode_lock_nested(d_inode(parent), I_MUTEX_PARENT);
-	ret = create_default_group(parent, group, frag);
-	if (ret)
-		goto err_out;
 
-	spin_lock(&configfs_dirent_lock);
-	configfs_dir_set_ready(group->cg_item.ci_dentry->d_fsdata);
-	spin_unlock(&configfs_dirent_lock);
+	ret = -ENOMEM;
+	child = d_alloc_name(parent, group->cg_item.ci_name);
+	if (child) {
+		d_add(child, NULL);
+
+		ret = configfs_attach_group(&group->cg_item, child, frag);
+		if (!ret) {
+			sd = child->d_fsdata;
+			sd->s_type |= CONFIGFS_USET_DEFAULT;
+		} else {
+			BUG_ON(d_inode(child));
+			d_drop(child);
+		}
+		dput(child);
+	}
+	if (!ret) {
+		spin_lock(&configfs_dirent_lock);
+		configfs_dir_set_ready(group->cg_item.ci_dentry->d_fsdata);
+		spin_unlock(&configfs_dirent_lock);
+	}
 	inode_unlock(d_inode(parent));
-	put_fragment(frag);
-	return 0;
-err_out:
-	inode_unlock(d_inode(parent));
-	mutex_lock(&subsys->su_mutex);
-	unlink_group(group);
-	mutex_unlock(&subsys->su_mutex);
+	if (ret) {
+		mutex_lock(&subsys->su_mutex);
+		unlink_group(group);
+		mutex_unlock(&subsys->su_mutex);
+	}
 	put_fragment(frag);
 	return ret;
 }
