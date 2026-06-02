@@ -707,35 +707,24 @@ static void link_group(struct config_group *parent_group, struct config_group *g
 		link_group(group, new_group);
 }
 
-/*
- * The goal is that configfs_attach_item() (and
- * configfs_attach_group()) can be called from either the VFS or this
- * module.  That is, they assume that the items have been created,
- * the dentry allocated, and the dcache is all ready to go.
- */
-static int configfs_attach_item(struct config_item *item,
-				struct dentry *dentry,
-				struct configfs_fragment *frag)
-{
-	int ret;
-
-	ret = configfs_create_dir(item, dentry, frag);
-	if (!ret)
-		ret = populate_attrs(item);
-
-	return ret;
-}
-
-static int configfs_attach_group(struct config_item *item,
-				 struct dentry *dentry,
-				 struct configfs_fragment *frag)
+static int configfs_attach(struct config_group *group,
+			   struct config_item *item,
+			   struct dentry *dentry,
+			   struct configfs_fragment *frag)
 {
 	int ret;
 	struct configfs_dirent *sd;
-	struct config_group *group = to_config_group(item), *new_group;
+	struct config_group *new_group;
 
-	ret = configfs_attach_item(item, dentry, frag);
+	if (group)
+		item = &group->cg_item;
+
+	ret = configfs_create_dir(item, dentry, frag);
 	if (ret)
+		return ret;
+
+	ret = populate_attrs(item);
+	if (ret || !group)
 		return ret;
 
 	sd = dentry->d_fsdata;
@@ -756,7 +745,7 @@ static int configfs_attach_group(struct config_item *item,
 		}
 		d_add(child, NULL);
 
-		ret = configfs_attach_group(&new_group->cg_item, child, frag);
+		ret = configfs_attach(new_group, NULL, child, frag);
 		if (!ret) {
 			struct configfs_dirent *child_sd = child->d_fsdata;
 			child_sd->s_type |= CONFIGFS_USET_DEFAULT;
@@ -1263,10 +1252,7 @@ static struct dentry *configfs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 	sd->s_type |= CONFIGFS_USET_IN_MKDIR;
 	spin_unlock(&configfs_dirent_lock);
 
-	if (group)
-		ret = configfs_attach_group(item, dentry, frag);
-	else
-		ret = configfs_attach_item(item, dentry, frag);
+	ret = configfs_attach(group, item, dentry, frag);
 	if (ret)
 		locked_recursive_removal(dentry, delete_one);
 
@@ -1617,7 +1603,7 @@ int configfs_register_group(struct config_group *parent_group,
 	if (child) {
 		d_add(child, NULL);
 
-		ret = configfs_attach_group(&group->cg_item, child, frag);
+		ret = configfs_attach(group, NULL, child, frag);
 		if (!ret) {
 			sd = child->d_fsdata;
 			sd->s_type |= CONFIGFS_USET_DEFAULT;
@@ -1756,8 +1742,7 @@ int configfs_register_subsystem(struct configfs_subsystem *subsys)
 
 		err = configfs_dirent_exists(dentry);
 		if (!err)
-			err = configfs_attach_group(&group->cg_item,
-						    dentry, frag);
+			err = configfs_attach(group, NULL, dentry, frag);
 		if (err) {
 			locked_recursive_removal(dentry, delete_one);
 		} else {
