@@ -759,6 +759,24 @@ static int configfs_attach(struct config_group *group,
 	return ret;
 }
 
+static int configfs_add_subtree(struct config_group *group,
+				struct config_item *item,
+				struct dentry *dentry,
+				struct configfs_fragment *frag)
+{
+	int ret;
+
+	ret = configfs_attach(group, item, dentry, frag);
+	if (unlikely(ret)) {
+		locked_recursive_removal(dentry, delete_one);
+		return ret;
+	}
+	spin_lock(&configfs_dirent_lock);
+	configfs_dir_set_ready(dentry->d_fsdata);
+	spin_unlock(&configfs_dirent_lock);
+	return 0;
+}
+
 /*
  * After the item has been detached from the filesystem view, we are
  * ready to tear it out of the hierarchy.  Notify the client before
@@ -1252,14 +1270,10 @@ static struct dentry *configfs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 	sd->s_type |= CONFIGFS_USET_IN_MKDIR;
 	spin_unlock(&configfs_dirent_lock);
 
-	ret = configfs_attach(group, item, dentry, frag);
-	if (ret)
-		locked_recursive_removal(dentry, delete_one);
+	ret = configfs_add_subtree(group, item, dentry, frag);
 
 	spin_lock(&configfs_dirent_lock);
 	sd->s_type &= ~CONFIGFS_USET_IN_MKDIR;
-	if (!ret)
-		configfs_dir_set_ready(dentry->d_fsdata);
 	spin_unlock(&configfs_dirent_lock);
 
 out_unlink:
@@ -1603,19 +1617,12 @@ int configfs_register_group(struct config_group *parent_group,
 	if (child) {
 		d_add(child, NULL);
 
-		ret = configfs_attach(group, NULL, child, frag);
+		ret = configfs_add_subtree(group, NULL, child, frag);
 		if (!ret) {
 			sd = child->d_fsdata;
 			sd->s_type |= CONFIGFS_USET_DEFAULT;
-		} else {
-			locked_recursive_removal(child, delete_one);
 		}
 		dput(child);
-	}
-	if (!ret) {
-		spin_lock(&configfs_dirent_lock);
-		configfs_dir_set_ready(group->cg_item.ci_dentry->d_fsdata);
-		spin_unlock(&configfs_dirent_lock);
 	}
 	inode_unlock(d_inode(parent));
 	if (ret) {
@@ -1742,14 +1749,7 @@ int configfs_register_subsystem(struct configfs_subsystem *subsys)
 
 		err = configfs_dirent_exists(dentry);
 		if (!err)
-			err = configfs_attach(group, NULL, dentry, frag);
-		if (err) {
-			locked_recursive_removal(dentry, delete_one);
-		} else {
-			spin_lock(&configfs_dirent_lock);
-			configfs_dir_set_ready(dentry->d_fsdata);
-			spin_unlock(&configfs_dirent_lock);
-		}
+			err = configfs_add_subtree(group, NULL, dentry, frag);
 		dput(dentry);
 	}
 
