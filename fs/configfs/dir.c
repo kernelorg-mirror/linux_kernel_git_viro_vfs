@@ -222,34 +222,6 @@ static struct configfs_dirent *configfs_new_dirent(struct configfs_dirent *paren
 	return sd;
 }
 
-/*
- *
- * Return -EEXIST if there is already a configfs element with the same
- * name for the same parent.
- *
- * called with parent inode's i_mutex held
- */
-static int configfs_dirent_exists(struct dentry *dentry)
-{
-	struct configfs_dirent *parent_sd = dentry->d_parent->d_fsdata;
-	const unsigned char *new = dentry->d_name.name;
-	struct configfs_dirent *sd;
-
-	spin_lock(&configfs_dirent_lock);
-	list_for_each_entry(sd, &parent_sd->s_children, s_sibling) {
-		if (sd->s_element) {
-			if (strcmp(configfs_get_name(sd), new) == 0) {
-				spin_unlock(&configfs_dirent_lock);
-				return -EEXIST;
-			}
-		}
-	}
-	spin_unlock(&configfs_dirent_lock);
-
-	return 0;
-}
-
-
 struct configfs_dirent *configfs_make_dirent(struct configfs_dirent * parent_sd,
 			 void * element,
 			 umode_t mode, int type, struct configfs_fragment *frag)
@@ -1610,21 +1582,18 @@ int configfs_register_group(struct config_group *parent_group,
 	if (!group->cg_item.ci_name)
 		group->cg_item.ci_name = group->cg_item.ci_namebuf;
 
-	inode_lock_nested(d_inode(parent), I_MUTEX_PARENT);
-
-	ret = -ENOMEM;
-	child = d_alloc_name(parent, group->cg_item.ci_name);
-	if (child) {
-		d_add(child, NULL);
-
+	child = simple_start_creating(parent, group->cg_item.ci_name);
+	if (!IS_ERR(child)) {
 		ret = configfs_add_subtree(group, NULL, child, frag);
 		if (!ret) {
 			sd = child->d_fsdata;
 			sd->s_type |= CONFIGFS_USET_DEFAULT;
 		}
-		dput(child);
+		simple_done_creating(child);
+	} else {
+		ret = PTR_ERR(child);
 	}
-	inode_unlock(d_inode(parent));
+
 	if (ret) {
 		mutex_lock(&subsys->su_mutex);
 		unlink_group(group);
@@ -1740,20 +1709,13 @@ int configfs_register_subsystem(struct configfs_subsystem *subsys)
 	link_group(to_config_group(sd->s_element), group);
 	mutex_unlock(&configfs_subsystem_mutex);
 
-	inode_lock_nested(d_inode(root), I_MUTEX_PARENT);
-
-	err = -ENOMEM;
-	dentry = d_alloc_name(root, group->cg_item.ci_name);
-	if (dentry) {
-		d_add(dentry, NULL);
-
-		err = configfs_dirent_exists(dentry);
-		if (!err)
-			err = configfs_add_subtree(group, NULL, dentry, frag);
-		dput(dentry);
+	dentry = simple_start_creating(root, group->cg_item.ci_name);
+	if (!IS_ERR(dentry)) {
+		err = configfs_add_subtree(group, NULL, dentry, frag);
+		simple_done_creating(dentry);
+	} else {
+		err = PTR_ERR(dentry);
 	}
-
-	inode_unlock(d_inode(root));
 
 	if (err) {
 		mutex_lock(&configfs_subsystem_mutex);
