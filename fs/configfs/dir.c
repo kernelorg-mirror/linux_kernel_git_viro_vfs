@@ -620,60 +620,6 @@ static int populate_attrs(struct config_item *item)
 	return 0;
 }
 
-static int configfs_attach_group(struct config_item *item,
-				 struct dentry *dentry,
-				 struct configfs_fragment *frag);
-
-/*
- * This fakes mkdir(2) on a default_groups[] entry.  It
- * creates a dentry, attachs it, and then does fixup
- * on the sd->s_type.
- *
- * We could, perhaps, tweak our parent's ->mkdir for a minute and
- * try using vfs_mkdir.  Just a thought.
- */
-static int create_default_group(struct dentry *parent,
-				struct config_group *group,
-				struct configfs_fragment *frag)
-{
-	int ret;
-	struct configfs_dirent *sd;
-	/* We trust the caller holds a reference to parent */
-	struct dentry *child;
-
-	if (!group->cg_item.ci_name)
-		group->cg_item.ci_name = group->cg_item.ci_namebuf;
-
-	ret = -ENOMEM;
-	child = d_alloc_name(parent, group->cg_item.ci_name);
-	if (child) {
-		d_add(child, NULL);
-
-		ret = configfs_attach_group(&group->cg_item, child, frag);
-		if (!ret) {
-			sd = child->d_fsdata;
-			sd->s_type |= CONFIGFS_USET_DEFAULT;
-		}
-		dput(child);
-	}
-
-	return ret;
-}
-
-static int populate_groups(struct config_group *group,
-			   struct configfs_fragment *frag)
-{
-	struct dentry *parent = group->cg_item.ci_dentry;
-	struct config_group *new_group;
-
-	list_for_each_entry(new_group, &group->default_groups, group_entry) {
-		int ret = create_default_group(parent, new_group, frag);
-		if (ret)
-			return ret;
-	}
-	return 0;
-}
-
 void configfs_remove_default_groups(struct config_group *group)
 {
 	struct config_group *g, *n;
@@ -786,28 +732,41 @@ static int configfs_attach_group(struct config_item *item,
 {
 	int ret;
 	struct configfs_dirent *sd;
+	struct config_group *group = to_config_group(item), *new_group;
 
 	ret = configfs_attach_item(item, dentry, frag);
-	if (!ret) {
-		sd = dentry->d_fsdata;
-		sd->s_type |= CONFIGFS_USET_DIR;
+	if (ret)
+		return ret;
 
-		/*
-		 * FYI, we're faking mkdir in populate_groups()
-		 * We must lock the group's inode to avoid races with the VFS
-		 * which can already hit the inode and try to add/remove entries
-		 * under it.
-		 *
-		 * We must also lock the inode to remove it safely in case of
-		 * error, as rmdir() would.
-		 */
-		inode_lock_nested(d_inode(dentry), I_MUTEX_CHILD);
-		configfs_adjust_dir_dirent_depth_before_populate(sd);
-		ret = populate_groups(to_config_group(item), frag);
-		configfs_adjust_dir_dirent_depth_after_populate(sd);
-		inode_unlock(d_inode(dentry));
+	sd = dentry->d_fsdata;
+	sd->s_type |= CONFIGFS_USET_DIR;
+
+	inode_lock_nested(d_inode(dentry), I_MUTEX_CHILD);
+	configfs_adjust_dir_dirent_depth_before_populate(sd);
+	list_for_each_entry(new_group, &group->default_groups, group_entry) {
+		struct dentry *child;
+
+		if (!new_group->cg_item.ci_name)
+			new_group->cg_item.ci_name = new_group->cg_item.ci_namebuf;
+
+		child = d_alloc_name(dentry, new_group->cg_item.ci_name);
+		if (unlikely(!child)) {
+			ret = -ENOMEM;
+			break;
+		}
+		d_add(child, NULL);
+
+		ret = configfs_attach_group(&new_group->cg_item, child, frag);
+		if (!ret) {
+			struct configfs_dirent *child_sd = child->d_fsdata;
+			child_sd->s_type |= CONFIGFS_USET_DEFAULT;
+		}
+		dput(child);
+		if (ret)
+			break;
 	}
-
+	configfs_adjust_dir_dirent_depth_after_populate(sd);
+	inode_unlock(d_inode(dentry));
 	return ret;
 }
 
