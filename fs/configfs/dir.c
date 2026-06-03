@@ -69,92 +69,6 @@ const struct dentry_operations configfs_dentry_ops = {
 	.d_iput		= configfs_d_iput,
 };
 
-#ifdef CONFIG_LOCKDEP
-
-/*
- * Helpers to make lockdep happy with our recursive locking of default groups'
- * inodes (see configfs_attach_group() and configfs_detach_group()).
- * We put default groups i_mutexes in separate classes according to their depth
- * from the youngest non-default group ancestor.
- *
- * For a non-default group A having default groups A/B, A/C, and A/C/D, default
- * groups A/B and A/C will have their inode's mutex in class
- * default_group_class[0], and default group A/C/D will be in
- * default_group_class[1].
- *
- * The lock classes are declared and assigned in inode.c, according to the
- * s_depth value.
- * The s_depth value is initialized to -1, adjusted to >= 0 when attaching
- * default groups, and reset to -1 when all default groups are attached. During
- * attachment, if configfs_create() sees s_depth > 0, the lock class of the new
- * inode's mutex is set to default_group_class[s_depth - 1].
- */
-
-static void configfs_init_dirent_depth(struct configfs_dirent *sd)
-{
-	sd->s_depth = -1;
-}
-
-static void configfs_set_dir_dirent_depth(struct configfs_dirent *parent_sd,
-					  struct configfs_dirent *sd)
-{
-	int parent_depth = parent_sd->s_depth;
-
-	if (parent_depth >= 0)
-		sd->s_depth = parent_depth + 1;
-}
-
-static void
-configfs_adjust_dir_dirent_depth_before_populate(struct configfs_dirent *sd)
-{
-	/*
-	 * item's i_mutex class is already setup, so s_depth is now only
-	 * used to set new sub-directories s_depth, which is always done
-	 * with item's i_mutex locked.
-	 */
-	/*
-	 *  sd->s_depth == -1 iff we are a non default group.
-	 *  else (we are a default group) sd->s_depth > 0 (see
-	 *  create_dir()).
-	 */
-	if (sd->s_depth == -1)
-		/*
-		 * We are a non default group and we are going to create
-		 * default groups.
-		 */
-		sd->s_depth = 0;
-}
-
-static void
-configfs_adjust_dir_dirent_depth_after_populate(struct configfs_dirent *sd)
-{
-	/* We will not create default groups anymore. */
-	sd->s_depth = -1;
-}
-
-#else /* CONFIG_LOCKDEP */
-
-static void configfs_init_dirent_depth(struct configfs_dirent *sd)
-{
-}
-
-static void configfs_set_dir_dirent_depth(struct configfs_dirent *parent_sd,
-					  struct configfs_dirent *sd)
-{
-}
-
-static void
-configfs_adjust_dir_dirent_depth_before_populate(struct configfs_dirent *sd)
-{
-}
-
-static void
-configfs_adjust_dir_dirent_depth_after_populate(struct configfs_dirent *sd)
-{
-}
-
-#endif /* CONFIG_LOCKDEP */
-
 static struct configfs_fragment *new_fragment(void)
 {
 	struct configfs_fragment *p;
@@ -198,7 +112,6 @@ static struct configfs_dirent *configfs_new_dirent(struct configfs_dirent *paren
 	INIT_LIST_HEAD(&sd->s_children);
 	sd->s_element = element;
 	sd->s_type = type;
-	configfs_init_dirent_depth(sd);
 	spin_lock(&configfs_dirent_lock);
 	if (parent_sd->s_type & CONFIGFS_USET_DROPPING) {
 		spin_unlock(&configfs_dirent_lock);
@@ -271,7 +184,6 @@ static int configfs_create_dir(struct config_item *item,
 	if (IS_ERR(sd))
 		return PTR_ERR(sd);
 
-	configfs_set_dir_dirent_depth(parent_sd, sd);
 	inode = configfs_create(dentry, sd, mode);
 	if (IS_ERR(inode)) {
 		configfs_remove_dirent(sd);
@@ -707,8 +619,6 @@ static int configfs_attach(struct config_group *group,
 	sd = dentry->d_fsdata;
 	sd->s_type |= CONFIGFS_USET_DIR;
 
-	inode_lock_nested(d_inode(dentry), I_MUTEX_CHILD);
-	configfs_adjust_dir_dirent_depth_before_populate(sd);
 	list_for_each_entry(new_group, &group->default_groups, group_entry) {
 		struct dentry *child;
 
@@ -716,12 +626,8 @@ static int configfs_attach(struct config_group *group,
 			new_group->cg_item.ci_name = new_group->cg_item.ci_namebuf;
 
 		child = d_alloc_name(dentry, new_group->cg_item.ci_name);
-		if (unlikely(!child)) {
-			ret = -ENOMEM;
-			break;
-		}
-		d_add(child, NULL);
-
+		if (unlikely(!child))
+			return -ENOMEM;
 		ret = configfs_attach(new_group, NULL, sd, child, frag);
 		if (!ret) {
 			struct configfs_dirent *child_sd = child->d_fsdata;
@@ -731,8 +637,6 @@ static int configfs_attach(struct config_group *group,
 		if (ret)
 			break;
 	}
-	configfs_adjust_dir_dirent_depth_after_populate(sd);
-	inode_unlock(d_inode(dentry));
 	return ret;
 }
 
