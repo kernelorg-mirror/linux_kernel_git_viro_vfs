@@ -163,8 +163,13 @@ static void configfs_remove_dirent(struct configfs_dirent *sd)
  *	@dentry:	config_item's dentry.
  *	@frag:		config_item's fragment.
  *
- *	Note: user-created entries won't be allowed under this new directory
- *	until it is validated by configfs_dir_set_ready()
+ *	Note: directory won't be reachable from configfs root until the entire
+ *	subtree has been set up.
+ *	USET_CREATING is set only on the root of our subtree and only to block
+ *	configfs_depend_prep() from searching anything in it.  Eventually we
+ *	might delay attaching the configfs_dirent subtree to the main tree
+ *	until the thing is fully set up; then USET_CREATING will be completely
+ *	gone.
  */
 
 static int configfs_create_dir(struct config_item *item,
@@ -175,11 +180,13 @@ static int configfs_create_dir(struct config_item *item,
 	umode_t mode = S_IFDIR| S_IRWXU | S_IRUGO | S_IXUGO;
 	struct configfs_dirent *sd;
 	struct inode *inode;
+	bool is_root = IS_ROOT(dentry);
 
 	BUG_ON(!item);
 
 	sd = configfs_make_dirent(parent_sd, item, mode,
-				     CONFIGFS_DIR | CONFIGFS_USET_CREATING,
+				     CONFIGFS_DIR |
+				     (is_root ? CONFIGFS_USET_CREATING : 0),
 				     frag);
 	if (IS_ERR(sd))
 		return PTR_ERR(sd);
@@ -197,7 +204,7 @@ static int configfs_create_dir(struct config_item *item,
 	/* directory inodes start off with i_nlink == 2 (for "." entry) */
 	inc_nlink(inode);
 	d_make_persistent(dentry, inode);
-	if (!IS_ROOT(dentry)) {
+	if (!is_root) {
 		struct inode *p_inode = d_inode(dentry->d_parent);
 		inc_nlink(p_inode);
 		inode_set_mtime_to_ts(p_inode,
@@ -205,44 +212,6 @@ static int configfs_create_dir(struct config_item *item,
 	}
 	item->ci_dentry = dentry;
 	return 0;
-}
-
-/*
- * Allow userspace to create new entries under a new directory created with
- * configfs_create_dir(), and under all of its chidlren directories recursively.
- * @sd		configfs_dirent of the new directory to validate
- *
- * Caller must hold configfs_dirent_lock.
- */
-static void configfs_dir_set_ready(struct configfs_dirent *sd)
-{
-	struct configfs_dirent *child_sd;
-
-	sd->s_type &= ~CONFIGFS_USET_CREATING;
-	list_for_each_entry(child_sd, &sd->s_children, s_sibling)
-		if (child_sd->s_type & CONFIGFS_USET_CREATING)
-			configfs_dir_set_ready(child_sd);
-}
-
-/*
- * Check that a directory does not belong to a directory hierarchy being
- * attached and not validated yet.
- * @sd		configfs_dirent of the directory to check
- *
- * @return	non-zero iff the directory was validated
- *
- * Note: takes configfs_dirent_lock, so the result may change from false to true
- * in two consecutive calls, but never from true to false.
- */
-int configfs_dirent_is_ready(struct configfs_dirent *sd)
-{
-	int ret;
-
-	spin_lock(&configfs_dirent_lock);
-	ret = !(sd->s_type & CONFIGFS_USET_CREATING);
-	spin_unlock(&configfs_dirent_lock);
-
-	return ret;
 }
 
 int configfs_create_link(struct configfs_dirent *target, struct dentry *parent,
@@ -283,17 +252,6 @@ static struct dentry * configfs_lookup(struct inode *dir,
 
 	if (dentry->d_name.len > NAME_MAX)
 		return ERR_PTR(-ENAMETOOLONG);
-
-	/*
-	 * Fake invisibility if dir belongs to a group/default groups hierarchy
-	 * being attached
-	 *
-	 * This forbids userspace to read/write attributes of items which may
-	 * not complete their initialization, since the dentries of the
-	 * attributes won't be instantiated.
-	 */
-	if (!configfs_dirent_is_ready(parent_sd))
-		return ERR_PTR(-ENOENT);
 
 	spin_lock(&configfs_dirent_lock);
 	list_for_each_entry(sd, &parent_sd->s_children, s_sibling) {
@@ -659,6 +617,7 @@ static struct dentry *configfs_add_subtree(struct config_group *group,
 {
 	struct configfs_dirent *parent_sd = dentry->d_parent->d_fsdata;
 	struct dentry *d = d_alloc_anon(dentry->d_sb);
+	struct configfs_dirent *sd;
 	struct inode *dir;
 	int ret;
 
@@ -674,8 +633,9 @@ static struct dentry *configfs_add_subtree(struct config_group *group,
 	dir = d_inode(dentry->d_parent);
 	inc_nlink(dir);
 	inode_set_mtime_to_ts(dir, inode_set_ctime_current(dir));
+	sd = d->d_fsdata;
 	spin_lock(&configfs_dirent_lock);
-	configfs_dir_set_ready(d->d_fsdata);
+	sd->s_type &= ~CONFIGFS_USET_CREATING;
 	spin_unlock(&configfs_dirent_lock);
 	d_move(d, dentry);
 	return d;
@@ -1062,15 +1022,6 @@ static struct dentry *configfs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 
 	sd = dentry->d_parent->d_fsdata;
 
-	/*
-	 * Fake invisibility if dir belongs to a group/default groups hierarchy
-	 * being attached
-	 */
-	if (!configfs_dirent_is_ready(sd)) {
-		ret = ERR_PTR(-ENOENT);
-		goto out;
-	}
-
 	if (!(sd->s_type & CONFIGFS_USET_DIR)) {
 		ret = ERR_PTR(-EPERM);
 		goto out;
@@ -1338,21 +1289,12 @@ static int configfs_dir_open(struct inode *inode, struct file *file)
 {
 	struct dentry * dentry = file->f_path.dentry;
 	struct configfs_dirent * parent_sd = dentry->d_fsdata;
-	int err;
 
 	inode_lock(d_inode(dentry));
-	/*
-	 * Fake invisibility if dir belongs to a group/default groups hierarchy
-	 * being attached
-	 */
-	err = -ENOENT;
-	if (configfs_dirent_is_ready(parent_sd)) {
-		file->private_data = configfs_new_dirent(parent_sd, NULL, 0, NULL);
-		err = PTR_ERR_OR_ZERO(file->private_data);
-	}
+	file->private_data = configfs_new_dirent(parent_sd, NULL, 0, NULL);
 	inode_unlock(d_inode(dentry));
 
-	return err;
+	return PTR_ERR_OR_ZERO(file->private_data);
 }
 
 static int configfs_dir_close(struct inode *inode, struct file *file)

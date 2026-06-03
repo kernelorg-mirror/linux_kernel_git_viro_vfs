@@ -82,9 +82,6 @@ static int create_link(struct config_item *parent_item,
 	char *body;
 	int ret;
 
-	if (!configfs_dirent_is_ready(target_sd))
-		return -ENOENT;
-
 	body = kzalloc(PAGE_SIZE, GFP_KERNEL);
 	if (!body)
 		return -ENOMEM;
@@ -136,18 +133,9 @@ int configfs_symlink(struct mnt_idmap *idmap, struct inode *dir,
 		     struct dentry *dentry, const char *symname)
 {
 	int ret;
-	struct configfs_dirent *sd;
 	struct config_item *parent_item;
 	struct config_item *target_item = NULL;
 	const struct config_item_type *type;
-
-	sd = dentry->d_parent->d_fsdata;
-	/*
-	 * Fake invisibility if dir belongs to a group/default groups hierarchy
-	 * being attached
-	 */
-	if (!configfs_dirent_is_ready(sd))
-		return -ENOENT;
 
 	parent_item = configfs_get_config_item(dentry->d_parent);
 	type = parent_item->ci_type;
