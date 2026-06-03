@@ -2870,7 +2870,7 @@ struct dentry *d_make_persistent(struct dentry *dentry, struct inode *inode)
 	__d_instantiate(dentry, inode);
 	dentry->d_flags |= DCACHE_PERSISTENT;
 	dget_dlock(dentry);
-	if (d_unhashed(dentry))
+	if (likely(!IS_ROOT(dentry)) && d_unhashed(dentry))
 		__d_rehash(dentry);
 	spin_unlock(&dentry->d_lock);
 	spin_unlock(&inode->i_lock);

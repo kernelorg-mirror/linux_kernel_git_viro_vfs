@@ -641,10 +641,12 @@ static void __simple_recursive_removal(struct dentry *dentry,
 				d_make_discardable(victim);
 			}
 			if (depth == 0) {
-				inode_set_mtime_to_ts(inode,
-						      inode_set_ctime_current(inode));
-				if (d_is_dir(dentry))
-					drop_nlink(inode);
+				if (likely(!IS_ROOT(dentry))) {
+					inode_set_mtime_to_ts(inode,
+						inode_set_ctime_current(inode));
+					if (d_is_dir(dentry))
+						drop_nlink(inode);
+				}
 				if (depth >= locked)
 					inode_unlock(inode);
 				dput(dentry);
