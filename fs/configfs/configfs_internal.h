@@ -65,12 +65,6 @@ extern int configfs_is_root(struct config_item *item);
 extern struct inode * configfs_new_inode(umode_t mode, struct configfs_dirent *, struct super_block *);
 extern struct inode *configfs_create(struct dentry *, struct configfs_dirent *, umode_t mode);
 
-extern int configfs_create_file(struct config_item *, const struct configfs_attribute *);
-extern int configfs_create_bin_file(struct config_item *,
-				    const struct configfs_bin_attribute *);
-extern struct configfs_dirent *configfs_make_dirent(struct configfs_dirent *,
-						    void *, umode_t, int,
-						    struct configfs_fragment *);
 extern int configfs_dirent_is_ready(struct configfs_dirent *);
 
 extern const unsigned char * configfs_get_name(struct configfs_dirent *sd);

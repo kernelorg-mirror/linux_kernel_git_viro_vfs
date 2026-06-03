@@ -135,7 +135,7 @@ static struct configfs_dirent *configfs_new_dirent(struct configfs_dirent *paren
 	return sd;
 }
 
-struct configfs_dirent *configfs_make_dirent(struct configfs_dirent * parent_sd,
+static struct configfs_dirent *configfs_make_dirent(struct configfs_dirent * parent_sd,
 			 void * element,
 			 umode_t mode, int type, struct configfs_fragment *frag)
 {
@@ -472,12 +472,10 @@ static void delete_one(struct dentry *dentry)
 
 static int populate_attrs(struct config_item *item)
 {
+	struct dentry *dir = item->ci_dentry;
 	const struct config_item_type *t = item->ci_type;
+	struct configfs_dirent *parent_sd = dir->d_fsdata, *sd;
 	const struct configfs_group_operations *ops;
-	struct configfs_attribute *attr;
-	struct configfs_bin_attribute *bin_attr;
-	int error = 0;
-	int i;
 
 	if (!t)
 		return -EINVAL;
@@ -485,23 +483,37 @@ static int populate_attrs(struct config_item *item)
 	ops = t->ct_group_ops;
 
 	if (t->ct_attrs) {
-		for (i = 0; (attr = t->ct_attrs[i]) != NULL; i++) {
-			if (ops && ops->is_visible && !ops->is_visible(item, attr, i))
+		struct configfs_attribute *attr;
+
+		for (int i = 0; (attr = t->ct_attrs[i]) != NULL; i++) {
+			umode_t mode = attr->ca_mode;
+			if (ops && ops->is_visible
+				&& !ops->is_visible(item, attr, i))
 				continue;
 
-			error = configfs_create_file(item, attr);
-			if (error)
-				return error;
+			sd = configfs_make_dirent(parent_sd, attr,
+						  (mode & S_IALLUGO) | S_IFREG,
+						  CONFIGFS_ITEM_ATTR,
+						  parent_sd->s_frag);
+			if (IS_ERR(sd))
+				return PTR_ERR(sd);
 		}
 	}
 	if (t->ct_bin_attrs) {
-		for (i = 0; (bin_attr = t->ct_bin_attrs[i]) != NULL; i++) {
-			if (ops && ops->is_bin_visible && !ops->is_bin_visible(item, bin_attr, i))
+		struct configfs_bin_attribute *bin_attr;
+
+		for (int i = 0; (bin_attr = t->ct_bin_attrs[i]) != NULL; i++) {
+			umode_t mode = bin_attr->cb_attr.ca_mode;
+			if (ops && ops->is_bin_visible
+				&& !ops->is_bin_visible(item, bin_attr, i))
 				continue;
 
-			error = configfs_create_bin_file(item, bin_attr);
-			if (error)
-				return error;
+			sd = configfs_make_dirent(parent_sd, bin_attr,
+						  (mode & S_IALLUGO) | S_IFREG,
+						  CONFIGFS_ITEM_BIN_ATTR,
+						  parent_sd->s_frag);
+			if (IS_ERR(sd))
+				return PTR_ERR(sd);
 		}
 	}
 
