@@ -98,9 +98,7 @@ struct configfs_fragment *get_fragment(struct configfs_fragment *frag)
 /*
  * Allocates a new configfs_dirent and links it to the parent configfs_dirent
  */
-static struct configfs_dirent *configfs_new_dirent(struct configfs_dirent *parent_sd,
-						   void *element, int type,
-						   struct configfs_fragment *frag)
+static struct configfs_dirent *configfs_new_dirent(void *element, int type)
 {
 	struct configfs_dirent * sd;
 
@@ -110,8 +108,22 @@ static struct configfs_dirent *configfs_new_dirent(struct configfs_dirent *paren
 
 	atomic_set(&sd->s_count, 1);
 	INIT_LIST_HEAD(&sd->s_children);
+	INIT_LIST_HEAD(&sd->s_sibling);
 	sd->s_element = element;
 	sd->s_type = type;
+	return sd;
+}
+
+static struct configfs_dirent *configfs_make_dirent(struct configfs_dirent * parent_sd,
+			 void * element,
+			 umode_t mode, int type, struct configfs_fragment *frag)
+{
+	struct configfs_dirent *sd;
+
+	sd = configfs_new_dirent(element, type);
+	if (IS_ERR(sd))
+		return sd;
+
 	spin_lock(&configfs_dirent_lock);
 	if (parent_sd->s_type & CONFIGFS_USET_DROPPING) {
 		spin_unlock(&configfs_dirent_lock);
@@ -123,27 +135,14 @@ static struct configfs_dirent *configfs_new_dirent(struct configfs_dirent *paren
 	/*
 	 * configfs_lookup scans only for unpinned items. s_children is
 	 * partitioned so that configfs_lookup can bail out early.
-	 * CONFIGFS_PINNED and CONFIGFS_NOT_PINNED are not symmetrical.  readdir
-	 * cursors still need to be inserted at the front of the list.
+	 * CONFIGFS_PINNED and CONFIGFS_NOT_PINNED are not symmetrical.
 	 */
 	if (sd->s_type & CONFIGFS_PINNED)
 		list_add_tail(&sd->s_sibling, &parent_sd->s_children);
 	else
 		list_add(&sd->s_sibling, &parent_sd->s_children);
 	spin_unlock(&configfs_dirent_lock);
-
-	return sd;
-}
-
-static struct configfs_dirent *configfs_make_dirent(struct configfs_dirent * parent_sd,
-			 void * element,
-			 umode_t mode, int type, struct configfs_fragment *frag)
-{
-	struct configfs_dirent *sd;
-
-	sd = configfs_new_dirent(parent_sd, element, type, frag);
-	if (!IS_ERR(sd))
-		sd->s_mode = mode;
+	sd->s_mode = mode;
 	return sd;
 }
 
@@ -1287,26 +1286,18 @@ const struct inode_operations configfs_root_inode_operations = {
 
 static int configfs_dir_open(struct inode *inode, struct file *file)
 {
-	struct dentry * dentry = file->f_path.dentry;
-	struct configfs_dirent * parent_sd = dentry->d_fsdata;
-
-	inode_lock(d_inode(dentry));
-	file->private_data = configfs_new_dirent(parent_sd, NULL, 0, NULL);
-	inode_unlock(d_inode(dentry));
+	file->private_data = configfs_new_dirent(NULL, 0);
 
 	return PTR_ERR_OR_ZERO(file->private_data);
 }
 
 static int configfs_dir_close(struct inode *inode, struct file *file)
 {
-	struct dentry * dentry = file->f_path.dentry;
-	struct configfs_dirent * cursor = file->private_data;
+	struct configfs_dirent *cursor = file->private_data;
 
-	inode_lock(d_inode(dentry));
 	spin_lock(&configfs_dirent_lock);
 	list_del_init(&cursor->s_sibling);
 	spin_unlock(&configfs_dirent_lock);
-	inode_unlock(d_inode(dentry));
 
 	release_configfs_dirent(cursor);
 
