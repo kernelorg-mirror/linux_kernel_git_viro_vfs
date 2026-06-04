@@ -168,7 +168,6 @@ static void configfs_remove_dirent(struct configfs_dirent *sd)
 
 static int configfs_create_dir(struct config_item *item,
 			       struct dentry *dentry,
-			       struct configfs_dirent *parent_sd,
 			       struct configfs_fragment *frag)
 {
 	umode_t mode = S_IFDIR| S_IRWXU | S_IRUGO | S_IXUGO;
@@ -184,8 +183,10 @@ static int configfs_create_dir(struct config_item *item,
 
 	spin_lock(&configfs_dirent_lock);
 	sd->s_frag = get_fragment(frag);
-	if (!is_root)
+	if (!is_root) {
+		struct configfs_dirent *parent_sd = dentry->d_parent->d_fsdata;
 		list_add_tail(&sd->s_sibling, &parent_sd->s_children);
+	}
 	spin_unlock(&configfs_dirent_lock);
 	sd->s_mode = mode;
 
@@ -565,7 +566,6 @@ static void link_group(struct config_group *parent_group, struct config_group *g
 
 static int configfs_attach(struct config_group *group,
 			   struct config_item *item,
-			   struct configfs_dirent *parent_sd,
 			   struct dentry *dentry,
 			   struct configfs_fragment *frag)
 {
@@ -576,7 +576,7 @@ static int configfs_attach(struct config_group *group,
 	if (group)
 		item = &group->cg_item;
 
-	ret = configfs_create_dir(item, dentry, parent_sd, frag);
+	ret = configfs_create_dir(item, dentry, frag);
 	if (ret)
 		return ret;
 
@@ -596,7 +596,7 @@ static int configfs_attach(struct config_group *group,
 		child = d_alloc_name(dentry, new_group->cg_item.ci_name);
 		if (unlikely(!child))
 			return -ENOMEM;
-		ret = configfs_attach(new_group, NULL, sd, child, frag);
+		ret = configfs_attach(new_group, NULL, child, frag);
 		if (!ret) {
 			struct configfs_dirent *child_sd = child->d_fsdata;
 			child_sd->s_type |= CONFIGFS_USET_DEFAULT;
@@ -621,7 +621,7 @@ static struct dentry *configfs_add_subtree(struct config_group *group,
 	if (unlikely(!d))
 		return ERR_PTR(-ENOMEM);
 
-	ret = configfs_attach(group, item, parent_sd, d, frag);
+	ret = configfs_attach(group, item, d, frag);
 	if (likely(!ret)) {
 		struct configfs_dirent *sd = d->d_fsdata;
 		spin_lock(&configfs_dirent_lock);
