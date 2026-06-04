@@ -115,8 +115,7 @@ static struct configfs_dirent *configfs_new_dirent(void *element, int type)
 }
 
 static struct configfs_dirent *configfs_make_dirent(struct configfs_dirent * parent_sd,
-			 void * element,
-			 umode_t mode, int type, struct configfs_fragment *frag)
+			 void * element, umode_t mode, int type)
 {
 	struct configfs_dirent *sd;
 
@@ -130,7 +129,7 @@ static struct configfs_dirent *configfs_make_dirent(struct configfs_dirent * par
 		kmem_cache_free(configfs_dir_cachep, sd);
 		return ERR_PTR(-ENOENT);
 	}
-	sd->s_frag = get_fragment(frag);
+	sd->s_frag = get_fragment(parent_sd->s_frag);
 
 	/*
 	 * configfs_lookup scans only for unpinned items. s_children is
@@ -221,8 +220,7 @@ int configfs_create_link(struct configfs_dirent *target, struct dentry *parent,
 	struct inode *p_inode = d_inode(parent);
 	struct inode *inode;
 
-	sd = configfs_make_dirent(p, target, mode, CONFIGFS_ITEM_LINK,
-			p->s_frag);
+	sd = configfs_make_dirent(p, target, mode, CONFIGFS_ITEM_LINK);
 	if (IS_ERR(sd))
 		return PTR_ERR(sd);
 
@@ -450,8 +448,7 @@ static int populate_attrs(struct config_item *item)
 
 			sd = configfs_make_dirent(parent_sd, attr,
 						  (mode & S_IALLUGO) | S_IFREG,
-						  CONFIGFS_ITEM_ATTR,
-						  parent_sd->s_frag);
+						  CONFIGFS_ITEM_ATTR);
 			if (IS_ERR(sd))
 				return PTR_ERR(sd);
 		}
@@ -467,8 +464,7 @@ static int populate_attrs(struct config_item *item)
 
 			sd = configfs_make_dirent(parent_sd, bin_attr,
 						  (mode & S_IALLUGO) | S_IFREG,
-						  CONFIGFS_ITEM_BIN_ATTR,
-						  parent_sd->s_frag);
+						  CONFIGFS_ITEM_BIN_ATTR);
 			if (IS_ERR(sd))
 				return PTR_ERR(sd);
 		}
