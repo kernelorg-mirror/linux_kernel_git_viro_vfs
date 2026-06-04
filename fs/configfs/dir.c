@@ -164,11 +164,6 @@ static void configfs_remove_dirent(struct configfs_dirent *sd)
  *
  *	Note: directory won't be reachable from configfs root until the entire
  *	subtree has been set up.
- *	USET_CREATING is set only on the root of our subtree and only to block
- *	configfs_depend_prep() from searching anything in it.  Eventually we
- *	might delay attaching the configfs_dirent subtree to the main tree
- *	until the thing is fully set up; then USET_CREATING will be completely
- *	gone.
  */
 
 static int configfs_create_dir(struct config_item *item,
@@ -183,12 +178,16 @@ static int configfs_create_dir(struct config_item *item,
 
 	BUG_ON(!item);
 
-	sd = configfs_make_dirent(parent_sd, item, mode,
-				     CONFIGFS_DIR |
-				     (is_root ? CONFIGFS_USET_CREATING : 0),
-				     frag);
+	sd = configfs_new_dirent(item, CONFIGFS_DIR);
 	if (IS_ERR(sd))
 		return PTR_ERR(sd);
+
+	spin_lock(&configfs_dirent_lock);
+	sd->s_frag = get_fragment(frag);
+	if (!is_root)
+		list_add_tail(&sd->s_sibling, &parent_sd->s_children);
+	spin_unlock(&configfs_dirent_lock);
+	sd->s_mode = mode;
 
 	inode = configfs_create(dentry, sd, mode);
 	if (IS_ERR(inode)) {
@@ -616,7 +615,6 @@ static struct dentry *configfs_add_subtree(struct config_group *group,
 {
 	struct configfs_dirent *parent_sd = dentry->d_parent->d_fsdata;
 	struct dentry *d = d_alloc_anon(dentry->d_sb);
-	struct configfs_dirent *sd;
 	struct inode *dir;
 	int ret;
 
@@ -624,6 +622,15 @@ static struct dentry *configfs_add_subtree(struct config_group *group,
 		return ERR_PTR(-ENOMEM);
 
 	ret = configfs_attach(group, item, parent_sd, d, frag);
+	if (likely(!ret)) {
+		struct configfs_dirent *sd = d->d_fsdata;
+		spin_lock(&configfs_dirent_lock);
+		if (parent_sd->s_type & CONFIGFS_USET_DROPPING)
+			ret = -ENOENT;
+		else
+			list_add_tail(&sd->s_sibling, &parent_sd->s_children);
+		spin_unlock(&configfs_dirent_lock);
+	}
 	if (unlikely(ret)) {
 		locked_recursive_removal(d, delete_one);
 		dput(d);
@@ -632,10 +639,6 @@ static struct dentry *configfs_add_subtree(struct config_group *group,
 	dir = d_inode(dentry->d_parent);
 	inc_nlink(dir);
 	inode_set_mtime_to_ts(dir, inode_set_ctime_current(dir));
-	sd = d->d_fsdata;
-	spin_lock(&configfs_dirent_lock);
-	sd->s_type &= ~CONFIGFS_USET_CREATING;
-	spin_unlock(&configfs_dirent_lock);
 	d_move(d, dentry);
 	return d;
 }
@@ -769,10 +772,7 @@ static int configfs_dump(struct configfs_dirent *sd, int level)
  * dead, as well as items in the middle of attachment since they virtually
  * do not exist yet. This completes the locking out of racing mkdir() and
  * rmdir().
- * Note: subdirectories in the middle of attachment start with s_type =
- * CONFIGFS_DIR|CONFIGFS_USET_CREATING set by create_dir().  When
- * CONFIGFS_USET_CREATING is set, we ignore the item.  The actual set of
- * s_type is in configfs_new_dirent(), which has configfs_dirent_lock.
+ * Note: subdirectories in the middle of attachment are not reachable.
  *
  * If the target is not found, -ENOENT is bubbled up.
  *
@@ -793,8 +793,7 @@ static int configfs_depend_prep(struct configfs_dirent *sd,
 
 	list_for_each_entry(child_sd, &sd->s_children, s_sibling) {
 		if ((child_sd->s_type & CONFIGFS_DIR) &&
-		    !(child_sd->s_type & CONFIGFS_USET_DROPPING) &&
-		    !(child_sd->s_type & CONFIGFS_USET_CREATING)) {
+		    !(child_sd->s_type & CONFIGFS_USET_DROPPING)) {
 			ret = configfs_depend_prep(child_sd, target);
 			if (!ret)
 				goto out;  /* Child path boo-yah */
